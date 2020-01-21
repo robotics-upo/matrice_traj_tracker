@@ -34,14 +34,19 @@ bool refUpdated = false;
 double max_vx, max_vy, max_vz, max_ry;
 double min_vx, min_vy, min_vz, min_ry;
 
+//Upo actions stuff
+std::unique_ptr<NavigationServer> navigationServer;
 upo_actions::Navigate3DFeedback actionFb;
 upo_actions::Navigate3DResult actionResult;
 upo_actions::Navigate3DGoalConstPtr actionGoal;
 
-std::unique_ptr<NavigationServer> navigationServer;
 visualization_msgs::Marker speedMarker,rotMarker;
+//Used to set the marker frame
 std::string droneFrame;
 
+//For the watchdog
+ros::Time lastT, currentT;
+ros::Duration watchdofPeriod;
 void configMarker(){
 
 	geometry_msgs::Point p1,p2;
@@ -141,6 +146,14 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	//Okey, if no goal active, forget about 
 	if(!navigationServer->isActive())
 		return;
+
+	currentT=msg->header.stamp;
+	if(currentT-lastT > watchdofPeriod){
+		ROS_WARN("Input trajectory timeout...");
+		lastT=currentT;
+		return;
+	}
+	lastT=currentT;
 
 	// Get the reference position and orientation
 	x_ref = msg->points[0].transforms[0].translation.x;
@@ -288,7 +301,8 @@ void navigateGoalCallback(){
 
 	//TODO: Okey if a new goal is while we are navigating to another goal it means that the trajectory has been re-calculated. So what to do?
 	actionGoal = navigationServer->acceptNewGoal();
-
+	//As it you don't refuse the first trajectory
+	currentT = ros::Time::now();
 }
 //Okey, this callback is reached when publishing over Navigate3D/cancel topic a empty message
 void navigatePreemptCallback(){
@@ -359,6 +373,8 @@ int main (int argc, char** argv)
 		min_ry = 0.25;
 	if(!nh.getParam("watchdog_freq", watchdogFreq))
 		watchdogFreq = 5.0;
+
+	watchdofPeriod = ros::Duration(1/watchdogFreq);
 
 	// Check the drone is in F-Mode before starting
 	ROS_INFO("Checking drone is in F-Mode ...");
