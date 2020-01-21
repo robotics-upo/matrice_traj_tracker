@@ -10,9 +10,13 @@
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
 #include <tf/transform_datatypes.h>
 
+#include <upo_actions/Navigate3DAction.h>
+#include <actionlib/server/simple_action_server.h>
+
 using namespace std;
 
 #define FLOAT_SIGN(val) (val > 0.0) ? +1.0 : -1.0
+    typedef actionlib::SimpleActionServer<upo_actions::Navigate3DAction> NavigationServer;
 
 // Global variables
 bool fModeActive = false;
@@ -207,6 +211,9 @@ int main (int argc, char** argv)
 	ros::ServiceClient ctrl_authority_service = nh.serviceClient<dji_sdk::SDKControlAuthority> ("/dji_sdk/sdk_control_authority");
 	ros::ServiceClient drone_task_service = nh.serviceClient<dji_sdk::DroneTaskControl>("/dji_sdk/drone_task_control");
 
+	NavigationServer navigationServer(nh,"/Navigation3D",false);
+    navigationServer.start();
+	
 	// Read node parameters
 	double takeoffHeight;
 	double watchdogFreq;

@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   trajectory_msgs
   dji_sdk
   tf
+  upo_actions
 )
 find_package(DJIOSDK REQUIRED)
 
@@ -110,7 +111,7 @@ find_package(DJIOSDK REQUIRED)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES matrice_traj_tracker
-#  CATKIN_DEPENDS roscpp sensor_msgs trajectory_msgs
+  CATKIN_DEPENDS roscpp sensor_msgs trajectory_msgs upo_actions
 #  DEPENDS system_lib
 )
 
@@ -148,7 +149,7 @@ add_executable(matrice_traj_tracker_node src/matrice_traj_tracker_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(matrice_traj_tracker_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(matrice_traj_tracker_node
