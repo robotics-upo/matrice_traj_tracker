@@ -151,6 +151,7 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	if(currentT-lastT > watchdofPeriod){
 		ROS_WARN("Input trajectory timeout...");
 		lastT=currentT;
+		sendSpeedReference(0, 0, 0, 0);
 		return;
 	}
 	lastT=currentT;
