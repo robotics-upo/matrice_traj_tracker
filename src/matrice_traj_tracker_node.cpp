@@ -14,9 +14,9 @@
 #include <actionlib/server/simple_action_server.h>
 
 using namespace std;
+typedef actionlib::SimpleActionServer<upo_actions::Navigate3DAction> NavigationServer;
 
 #define FLOAT_SIGN(val) (val > 0.0) ? +1.0 : -1.0
-    typedef actionlib::SimpleActionServer<upo_actions::Navigate3DAction> NavigationServer;
 
 // Global variables
 bool fModeActive = false;
@@ -25,9 +25,18 @@ uint8_t display_mode  = 255;
 float heightAboveTakeoff = -1000.0;
 ros::Publisher controlPub;
 double x_ref, y_ref, z_ref, yaw_ref;
+
+//Used to publish the real distance to the goal when arrived(Mostly debugging purposes)
+double x_old, y_old, z_old;
 bool refUpdated = false;
 double max_vx, max_vy, max_vz, max_ry;
 double min_vx, min_vy, min_vz, min_ry;
+
+upo_actions::Navigate3DFeedback actionFb;
+upo_actions::Navigate3DResult actionResult;
+upo_actions::Navigate3DGoalConstPtr actionGoal;
+
+std::unique_ptr<NavigationServer> navigationServer;
 
 void sendSpeedReference(float vx, float vy, float vz, float ry)
 {
@@ -81,6 +90,10 @@ void height_above_takeoff_callback(const std_msgs::Float32::ConstPtr& msg)
 // Commanded robot trajectory
 void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::ConstPtr& msg)
 {
+	//Okey, if no goal active, forget about 
+	if(!navigationServer->isActive())
+		return;
+
 	// Get the reference position and orientation
 	x_ref = msg->points[0].transforms[0].translation.x;
 	y_ref = msg->points[0].transforms[0].translation.y;
@@ -94,15 +107,29 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	m.getRPY(r, p, yaw_ref);
 	
 	// Apply lower bound to the given refence
-	if(fabs(x_ref) < 0.2)
+	if(fabs(x_ref) < 0.2){
+		x_old=x_ref;
 		x_ref = 0.0;
-	if(fabs(y_ref) < 0.2)
+	}
+	if(fabs(y_ref) < 0.2){
+		y_old=y_ref;
 		y_ref = 0.0;
-	if(fabs(z_ref) < 0.2)
+	}
+	if(fabs(z_ref) < 0.2){
+		z_old=z_ref;
 		z_ref = 0.0;
+	}
+
 	if(fabs(yaw_ref) < 0.1)
 		yaw_ref = 0.0;
 		
+	//It means that we reached the goal
+	if(x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
+		actionResult.arrived = true;
+		actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);
+		navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
+	}
+	
 	// Compute commmanded velocities
 	double vx, vy, vz, ry;
 	if(fabs(x_ref) > 1.0)
@@ -124,6 +151,12 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	
 	// Command the computed velocities
 	sendSpeedReference(vx, vy, vz, ry);
+	actionFb.speed.linear.x = vx;
+	actionFb.speed.linear.y = vy;
+	actionFb.speed.linear.z = vz;
+	actionFb.speed.angular.z = ry;
+	//TODO: Fill dist2Goal feedback field, not important right now
+	navigationServer->publishFeedback(actionFb);
 }
 
 
@@ -193,7 +226,19 @@ bool monitoredTakeoff(void)
 	
 	return true;
 }
+void navigateGoalCallback(){
 
+	//TODO: Okey if a new goal is while we are navigating to another goal it means that the trajectory has been re-calculated. So what to do?
+	actionGoal = navigationServer->acceptNewGoal();
+
+}
+//Okey, this callback is reached when publishing over Navigate3D/cancel topic a empty message
+void navigatePreemptCallback(){
+
+	actionResult.arrived = false;
+	actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);//TODO: Put the real one
+	navigationServer->setPreempted(actionResult,"3D Navigation Goal Reached");
+}
 int main (int argc, char** argv)
 {
 	ros::init (argc, argv, "matrice_traj_tracker_node");
@@ -211,9 +256,12 @@ int main (int argc, char** argv)
 	ros::ServiceClient ctrl_authority_service = nh.serviceClient<dji_sdk::SDKControlAuthority> ("/dji_sdk/sdk_control_authority");
 	ros::ServiceClient drone_task_service = nh.serviceClient<dji_sdk::DroneTaskControl>("/dji_sdk/drone_task_control");
 
-	NavigationServer navigationServer(nh,"/Navigation3D",false);
-    navigationServer.start();
-	
+	//Start action server to communicate with local planner
+	navigationServer.reset(new NavigationServer(nh,"/Navigation3D",false));
+    navigationServer->registerGoalCallback(boost::function<void()>(navigateGoalCallback));
+    navigationServer->registerPreemptCallback(boost::function<void()>(navigatePreemptCallback));
+    navigationServer->start();
+
 	// Read node parameters
 	double takeoffHeight;
 	double watchdogFreq;
