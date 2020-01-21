@@ -12,6 +12,8 @@
 
 #include <upo_actions/Navigate3DAction.h>
 #include <actionlib/server/simple_action_server.h>
+#include <visualization_msgs/Marker.h>
+
 
 using namespace std;
 typedef actionlib::SimpleActionServer<upo_actions::Navigate3DAction> NavigationServer;
@@ -23,7 +25,7 @@ bool fModeActive = false;
 uint8_t flight_status = 255;
 uint8_t display_mode  = 255;
 float heightAboveTakeoff = -1000.0;
-ros::Publisher controlPub;
+ros::Publisher controlPub, speedMarkerPub;
 double x_ref, y_ref, z_ref, yaw_ref;
 
 //Used to publish the real distance to the goal when arrived(Mostly debugging purposes)
@@ -37,7 +39,53 @@ upo_actions::Navigate3DResult actionResult;
 upo_actions::Navigate3DGoalConstPtr actionGoal;
 
 std::unique_ptr<NavigationServer> navigationServer;
+visualization_msgs::Marker speedMarker,rotMarker;
+std::string droneFrame;
 
+void configMarker(){
+
+	geometry_msgs::Point p1,p2;
+	p1.x=0;
+	p1.y=0;
+	p1.z=0;
+
+	speedMarker.points.push_back(p1);
+	speedMarker.points.push_back(p2);
+	speedMarker.header.frame_id = droneFrame;
+    speedMarker.header.stamp = ros::Time::now();
+    speedMarker.ns = "matrice_traj_tracker_node";
+    speedMarker.id = 1;
+    speedMarker.type = visualization_msgs::Marker::ARROW;
+    speedMarker.action = visualization_msgs::Marker::ADD;
+    speedMarker.lifetime = ros::Duration(0.2);
+    speedMarker.scale.y = 0.1;
+    speedMarker.scale.z = 0.2;
+    speedMarker.pose.position.x = 0;
+    speedMarker.pose.position.y = 0;
+    speedMarker.pose.position.z = 0.3;
+    speedMarker.color.a = 1.0;
+    speedMarker.color.b = 1.0;
+    speedMarker.color.g = 1.0;
+    speedMarker.color.r = 0.0;
+
+	rotMarker.header.frame_id = droneFrame;
+    rotMarker.header.stamp = ros::Time::now();
+    rotMarker.ns = "matrice_traj_tracker_node";
+    rotMarker.id = 2;
+    rotMarker.type = visualization_msgs::Marker::ARROW;
+    rotMarker.action = visualization_msgs::Marker::ADD;
+    rotMarker.lifetime = ros::Duration(0.2);
+    rotMarker.scale.y = 0.1;
+    rotMarker.scale.z = 0.2;
+    rotMarker.pose.position.x = 0;
+    rotMarker.pose.position.y = 0;
+    rotMarker.pose.position.z = 0.3;
+    rotMarker.color.a = 1.0;
+    rotMarker.color.b = 0.0;
+    rotMarker.color.g = 0.0;
+    rotMarker.color.r = 1.0;
+
+}
 void sendSpeedReference(float vx, float vy, float vz, float ry)
 {
 	// Build the message 
@@ -157,6 +205,16 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	actionFb.speed.angular.z = ry;
 	//TODO: Fill dist2Goal feedback field, not important right now
 	navigationServer->publishFeedback(actionFb);
+
+	//Publish markers
+	speedMarker.points[1].x = vx;
+	speedMarker.points[1].y = vy;
+	speedMarker.points[1].z = vz;
+
+	rotMarker.scale.x = ry;
+
+	speedMarkerPub.publish(speedMarker);
+	speedMarkerPub.publish(rotMarker);
 }
 
 
@@ -244,6 +302,8 @@ int main (int argc, char** argv)
 	ros::init (argc, argv, "matrice_traj_tracker_node");
 	ros::NodeHandle nh("~");	
 	
+	//Publish speed arrow marker
+	speedMarkerPub = nh.advertise<visualization_msgs::Marker>("speedMarker", 2);
 	// Create rc subscriber and control publisher
 	ros::Subscriber rcSub = nh.subscribe<sensor_msgs::Joy>("/dji_sdk/rc", 1, &rc_callback);
 	ros::Subscriber flightStatusSub = nh.subscribe("/dji_sdk/flight_status", 1, &flight_status_callback);
@@ -262,9 +322,18 @@ int main (int argc, char** argv)
     navigationServer->registerPreemptCallback(boost::function<void()>(navigatePreemptCallback));
     navigationServer->start();
 
+	
 	// Read node parameters
+	
+	if(!nh.getParam("drone_frame", droneFrame)){
+		droneFrame = "matrice";
+		ROS_WARN("Using default frame %s",droneFrame.c_str());
+	}
+	configMarker();
+
 	double takeoffHeight;
 	double watchdogFreq;
+
 	if(!nh.getParam("takeoff_height", takeoffHeight))
 		takeoffHeight = 3.0;
 	if(takeoffHeight < 2.0 || takeoffHeight > 10.0)
