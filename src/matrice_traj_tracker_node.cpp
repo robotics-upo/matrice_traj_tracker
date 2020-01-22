@@ -145,6 +145,7 @@ void height_above_takeoff_callback(const std_msgs::Float32::ConstPtr& msg)
 // Commanded robot trajectory
 void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::ConstPtr& msg)
 {
+	//cout << 1 << endl;
 	//Okey, if no goal active, forget about 
 	if(!testing && !navigationServer->isActive())
 		return;
@@ -158,6 +159,7 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	}
 	lastT=currentT;
 
+	//cout << 2 << endl;
 	// Get the reference position and orientation
 	x_ref = msg->points[0].transforms[0].translation.x;
 	y_ref = msg->points[0].transforms[0].translation.y;
@@ -188,7 +190,7 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 		yaw_ref = 0.0;
 		
 	//It means that we reached the goal
-	if(x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
+	if(!testing && x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
 		actionResult.arrived = true;
 		actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);
 		navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
@@ -220,7 +222,8 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	actionFb.speed.linear.z = vz;
 	actionFb.speed.angular.z = ry;
 	//TODO: Fill dist2Goal feedback field, not important right now
-	navigationServer->publishFeedback(actionFb);
+	if(!testing)
+		navigationServer->publishFeedback(actionFb);
 
 	//Publish markers
 	speedMarker.points[1].x = vx;
