@@ -47,6 +47,8 @@ std::string droneFrame;
 //For the watchdog
 ros::Time lastT, currentT;
 ros::Duration watchdofPeriod;
+bool testing;
+
 void configMarker(){
 
 	geometry_msgs::Point p1,p2;
@@ -144,11 +146,11 @@ void height_above_takeoff_callback(const std_msgs::Float32::ConstPtr& msg)
 void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::ConstPtr& msg)
 {
 	//Okey, if no goal active, forget about 
-	if(!navigationServer->isActive())
+	if(!testing && !navigationServer->isActive())
 		return;
 
 	currentT=msg->header.stamp;
-	if(currentT-lastT > watchdofPeriod){
+	if(!testing && currentT-lastT > watchdofPeriod){
 		ROS_WARN("Input trajectory timeout...");
 		lastT=currentT;
 		sendSpeedReference(0, 0, 0, 0);
@@ -324,7 +326,7 @@ int main (int argc, char** argv)
 	ros::Subscriber flightStatusSub = nh.subscribe("/dji_sdk/flight_status", 1, &flight_status_callback);
 	ros::Subscriber displayModeSub = nh.subscribe("/dji_sdk/display_mode", 1, &display_mode_callback);
 	ros::Subscriber heightAboveTakeoffSub = nh.subscribe("/dji_sdk/height_above_takeoff", 1, &height_above_takeoff_callback);
-	ros::Subscriber trajectorySub = nh.subscribe("input_trajectory", 1, &input_trajectory_callback);
+	ros::Subscriber trajectorySub = nh.subscribe("/input_trajectory", 1, &input_trajectory_callback);
 	controlPub = nh.advertise<sensor_msgs::Joy>("/dji_sdk/flight_control_setpoint_generic", 0);    
 
 	// Required services
@@ -339,7 +341,10 @@ int main (int argc, char** argv)
 
 	
 	// Read node parameters
-	
+	if(!nh.getParam("testing", testing)){
+		testing=true;
+		ROS_WARN("Testing mode: Avoiding trajectory timeout and checking and navigate goal active checking");
+	}
 	if(!nh.getParam("drone_frame", droneFrame)){
 		droneFrame = "matrice";
 		ROS_WARN("Using default frame %s",droneFrame.c_str());

@@ -7,7 +7,7 @@ int main(int argc, char **argv)
 
     ros::init(argc, argv, "fake_traj_publisher_node");
     ros::NodeHandle lnh("~");
-    ros::Publisher traj_pub = lnh.advertise<trajectory_msgs::MultiDOFJointTrajectory>("local_path", 1, false);
+    ros::Publisher traj_pub = lnh.advertise<trajectory_msgs::MultiDOFJointTrajectory>("/input_trajectory", 1, false);
     trajectory_msgs::MultiDOFJointTrajectory traj;
     trajectory_msgs::MultiDOFJointTrajectoryPoint traj_point;
     traj_point.transforms.resize(1);
