@@ -48,7 +48,7 @@ std::string droneFrame;
 ros::Time lastT, currentT;
 ros::Duration watchdofPeriod;
 bool testing;
-
+bool gazebo_sim=false;
 void configMarker(){
 
 	geometry_msgs::Point p1,p2;
@@ -344,8 +344,13 @@ int main (int argc, char** argv)
 
 	
 	// Read node parameters
+
+	if(!nh.getParam("gazebo_sim", gazebo_sim)){
+		gazebo_sim=false;
+		ROS_WARN("Gazebo mode");
+	}
 	if(!nh.getParam("testing", testing)){
-		testing=true;
+		testing=false;
 		ROS_WARN("Testing mode: Avoiding trajectory timeout and checking and navigate goal active checking");
 	}
 	if(!nh.getParam("drone_frame", droneFrame)){
@@ -387,6 +392,9 @@ int main (int argc, char** argv)
 
 	// Check the drone is in F-Mode before starting
 	ROS_INFO("Checking drone is in F-Mode ...");
+	if(gazebo_sim)
+		fModeActive=true;
+
 	while(!fModeActive)
 	{
 		ros::Duration(0.01).sleep();
@@ -396,33 +404,42 @@ int main (int argc, char** argv)
 
 	// Get control authority
 	ROS_INFO("Getting control authority ...");
-	dji_sdk::SDKControlAuthority authority;
-	authority.request.control_enable=1;
-	ctrl_authority_service.call(authority);
-	if(!authority.response.result)
-	{
-		ROS_ERROR("impossible to obtain drone control!");
-		return -1;
+	if(!gazebo_sim){
+		dji_sdk::SDKControlAuthority authority;
+		authority.request.control_enable=1;
+		ctrl_authority_service.call(authority);
+		if(authority.response.result)
+		{
+			ROS_ERROR("impossible to obtain drone control!");
+			return -1;
+		}
 	}
+	
 	ROS_INFO("\tdone!");
 
     // Perform automatic take-off
     ROS_INFO("Taking-off ...");
-    dji_sdk::DroneTaskControl droneTaskControl;
-	droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_TAKEOFF;
-	drone_task_service.call(droneTaskControl);
-	if(!droneTaskControl.response.result)
-	{
+    if(!gazebo_sim){
+		dji_sdk::DroneTaskControl droneTaskControl;
+	
+		droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_TAKEOFF;
+		
+		drone_task_service.call(droneTaskControl);
+		if(!droneTaskControl.response.result)
+		{
 		ROS_ERROR("takeoff fail!");
 		return -1;
+		}
 	}
-	if(!monitoredTakeoff())
+
+	
+	if(!gazebo_sim && !monitoredTakeoff())
 		return -1;
 	ROS_INFO("\tdone!");
 
 	// Fly up until reaching the takeoff altitude
 	ROS_INFO("Climbing to takeoff height ...");
-	while(heightAboveTakeoff-takeoffHeight < 0)
+	while(!gazebo_sim && heightAboveTakeoff-takeoffHeight < 0)
 	{
 		sendSpeedReference(0.0, 0.0, max_vz, 0.0);
 		ros::spinOnce();
