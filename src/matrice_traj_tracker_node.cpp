@@ -2,8 +2,10 @@
 #include <ros/ros.h>
 #include <ros/node_handle.h>
 #include <sensor_msgs/Joy.h>
+#include <sensor_msgs/NavSatFix.h>
 #include <std_msgs/UInt8.h>
 #include <std_msgs/Float32.h>
+#include <std_msgs/Float64.h>
 #include <dji_sdk/dji_sdk.h>
 #include <dji_sdk/DroneTaskControl.h>
 #include <dji_sdk/SDKControlAuthority.h>
@@ -24,8 +26,8 @@ typedef actionlib::SimpleActionServer<upo_actions::Navigate3DAction> NavigationS
 bool fModeActive = false;
 uint8_t flight_status = 255;
 uint8_t display_mode  = 255;
-float heightAboveTakeoff = -1000.0;
-ros::Publisher controlPub, speedMarkerPub;
+double height = -100000.0, landingHeight = -100000.0;
+ros::Publisher controlPub, speedMarkerPub, heightAboveTakeoffPub;
 double x_ref, y_ref, z_ref, yaw_ref;
 
 //Used to publish the real distance to the goal when arrived(Mostly debugging purposes)
@@ -136,10 +138,16 @@ void display_mode_callback(const std_msgs::UInt8::ConstPtr& msg)
 	display_mode = msg->data;
 }
 
-// Height above takeoff callback
-void height_above_takeoff_callback(const std_msgs::Float32::ConstPtr& msg)
+// GPS altitude callback
+void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& msg)
 {
-	heightAboveTakeoff = msg->data;
+	std_msgs::Float64 height_msg; 
+	height = msg->altitude;
+	if(landingHeight > -1000.0)
+	{
+		height_msg.data = msg->altitude-landingHeight;
+		heightAboveTakeoffPub.publish(height_msg);
+	}
 }
 
 // Commanded robot trajectory
@@ -172,23 +180,25 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	tf::Matrix3x3 m(q);
 	m.getRPY(r, p, yaw_ref);
 	
-	// Apply lower bound to the given refence
-	if(fabs(x_ref) < 0.2){
-		x_old=x_ref;
-		x_ref = 0.0;
+	// Apply lower bound to the given refence only when last wayoint is used
+	if(msg->points.size() == 1)
+	{
+		if(fabs(x_ref) < 0.2){
+			x_old=x_ref;
+			x_ref = 0.0;
+		}
+		if(fabs(y_ref) < 0.2){
+			y_old=y_ref;
+			y_ref = 0.0;
+		}
+		if(fabs(z_ref) < 0.2){
+			z_old=z_ref;
+			z_ref = 0.0;
+		}
+		if(fabs(yaw_ref) < 0.1)
+			yaw_ref = 0.0;
 	}
-	if(fabs(y_ref) < 0.2){
-		y_old=y_ref;
-		y_ref = 0.0;
-	}
-	if(fabs(z_ref) < 0.2){
-		z_old=z_ref;
-		z_ref = 0.0;
-	}
-
-	if(fabs(yaw_ref) < 0.1)
-		yaw_ref = 0.0;
-		
+	
 	//It means that we reached the goal
 	if(!testing && x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
 		actionResult.arrived = true;
@@ -328,10 +338,11 @@ int main (int argc, char** argv)
 	ros::Subscriber rcSub = nh.subscribe<sensor_msgs::Joy>("/dji_sdk/rc", 1, &rc_callback);
 	ros::Subscriber flightStatusSub = nh.subscribe("/dji_sdk/flight_status", 1, &flight_status_callback);
 	ros::Subscriber displayModeSub = nh.subscribe("/dji_sdk/display_mode", 1, &display_mode_callback);
-	ros::Subscriber heightAboveTakeoffSub = nh.subscribe("/dji_sdk/height_above_takeoff", 1, &height_above_takeoff_callback);
+	ros::Subscriber gps = nh.subscribe("/dji_sdk/gps_position", 1, &gps_callback);
 	ros::Subscriber trajectorySub = nh.subscribe("/input_trajectory", 1, &input_trajectory_callback);
 	controlPub = nh.advertise<sensor_msgs::Joy>("/dji_sdk/flight_control_setpoint_generic", 0);    
-
+	heightAboveTakeoffPub = nh.advertise<std_msgs::Float64>("/height_above_takeoff", 0);
+	
 	// Required services
 	ros::ServiceClient ctrl_authority_service = nh.serviceClient<dji_sdk::SDKControlAuthority> ("/dji_sdk/sdk_control_authority");
 	ros::ServiceClient drone_task_service = nh.serviceClient<dji_sdk::DroneTaskControl>("/dji_sdk/drone_task_control");
@@ -342,9 +353,9 @@ int main (int argc, char** argv)
     navigationServer->registerPreemptCallback(boost::function<void()>(navigatePreemptCallback));
     navigationServer->start();
 
-	
 	// Read node parameters
-
+	double takeoffHeight;
+	double watchdogFreq;
 	if(!nh.getParam("gazebo_sim", gazebo_sim)){
 		gazebo_sim=false;
 		ROS_WARN("Gazebo mode");
@@ -358,10 +369,6 @@ int main (int argc, char** argv)
 		ROS_WARN("Using default frame %s",droneFrame.c_str());
 	}
 	configMarker();
-
-	double takeoffHeight;
-	double watchdogFreq;
-
 	if(!nh.getParam("takeoff_height", takeoffHeight))
 		takeoffHeight = 3.0;
 	if(takeoffHeight < 2.0 || takeoffHeight > 10.0)
@@ -390,11 +397,20 @@ int main (int argc, char** argv)
 
 	watchdofPeriod = ros::Duration(1/watchdogFreq);
 
+	// Get takeoff altitude
+	ROS_INFO("Checking takeoff altitude ...");
+	while(height < -10000.0)
+	{
+		ros::Duration(0.01).sleep();
+		ros::spinOnce();
+	} 
+	landingHeight = height; 
+	ROS_INFO("\tdone!");
+
 	// Check the drone is in F-Mode before starting
 	ROS_INFO("Checking drone is in F-Mode ...");
 	if(gazebo_sim)
 		fModeActive=true;
-
 	while(!fModeActive)
 	{
 		ros::Duration(0.01).sleep();
@@ -414,7 +430,6 @@ int main (int argc, char** argv)
 			return -1;
 		}
 	}
-	
 	ROS_INFO("\tdone!");
 
     // Perform automatic take-off
@@ -439,7 +454,7 @@ int main (int argc, char** argv)
 
 	// Fly up until reaching the takeoff altitude
 	ROS_INFO("Climbing to takeoff height ...");
-	while(!gazebo_sim && heightAboveTakeoff-takeoffHeight < 0)
+	while(!gazebo_sim && (height-landingHeight)-takeoffHeight < 0)
 	{
 		sendSpeedReference(0.0, 0.0, max_vz, 0.0);
 		ros::spinOnce();
