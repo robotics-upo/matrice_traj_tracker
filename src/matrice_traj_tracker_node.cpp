@@ -424,7 +424,7 @@ int main (int argc, char** argv)
 		dji_sdk::SDKControlAuthority authority;
 		authority.request.control_enable=1;
 		ctrl_authority_service.call(authority);
-		if(authority.response.result)
+		if(!authority.response.result)
 		{
 			ROS_ERROR("impossible to obtain drone control!");
 			return -1;
