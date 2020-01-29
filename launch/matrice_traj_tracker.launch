@@ -11,7 +11,7 @@
     <param name="min_vz" type="double" value="0.2"/>
     <param name="min_ry" type="double" value="0.2"/>
     <param name="watchdog_freq" type="double" value="7.0"/>
-    <param name="testing" value="true" />
+    <param name="testing" value="false" />
     </node>
 
 </launch>
