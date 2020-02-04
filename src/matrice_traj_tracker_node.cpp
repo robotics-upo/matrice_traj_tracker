@@ -29,6 +29,7 @@ uint8_t display_mode  = 255;
 double height = -100000.0, landingHeight = -100000.0;
 ros::Publisher controlPub, speedMarkerPub, heightAboveTakeoffPub;
 double x_ref, y_ref, z_ref, yaw_ref;
+double control_factor, arrived_th_xyz, arrived_th_yaw;
 
 //Used to publish the real distance to the goal when arrived(Mostly debugging purposes)
 double x_old, y_old, z_old;
@@ -183,20 +184,24 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	// Apply lower bound to the given refence only when last wayoint is used
 	if(msg->points.size() == 1)
 	{
-		if(fabs(x_ref) < 0.2){
+		if(fabs(x_ref) < arrived_th_xyz){
 			x_old=x_ref;
 			x_ref = 0.0;
 		}
-		if(fabs(y_ref) < 0.2){
+		if(fabs(y_ref) < arrived_th_xyz){
 			y_old=y_ref;
 			y_ref = 0.0;
 		}
-		if(fabs(z_ref) < 0.2){
+		if(fabs(z_ref) < arrived_th_xyz){
 			z_old=z_ref;
 			z_ref = 0.0;
 		}
-		if(fabs(yaw_ref) < 0.1)
+		if(fabs(yaw_ref) < arrived_th_yaw)
 			yaw_ref = 0.0;
+	}
+	else
+	{
+		yaw_ref = 0.0;
 	}
 	
 	//It means that we reached the goal
@@ -224,6 +229,13 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 		ry = max_ry*FLOAT_SIGN(yaw_ref);
 	else
 		ry = max_ry*yaw_ref;
+	if(msg->points.size() == 1)
+	{
+		vx = control_factor*vx;
+		vy = control_factor*vy;
+		vz = control_factor*vz;
+		ry = control_factor*ry;
+	}
 	
 	// Command the computed velocities
 	sendSpeedReference(vx, vy, vz, ry);
@@ -381,9 +393,9 @@ int main (int argc, char** argv)
 	if(!nh.getParam("max_vy", max_vy))
 		max_vy = 1.0;	
 	if(!nh.getParam("max_vz", max_vz))
-		max_vz = 1.0;
+		max_vz = 0.5;
 	if(!nh.getParam("max_ry", max_ry))
-		max_ry = 0.5;
+		max_ry = 0.2;
 	if(!nh.getParam("min_vx", min_vx))
 		min_vx = 0.5;
 	if(!nh.getParam("min_vy", min_vy))
@@ -394,6 +406,9 @@ int main (int argc, char** argv)
 		min_ry = 0.25;
 	if(!nh.getParam("watchdog_freq", watchdogFreq))
 		watchdogFreq = 5.0;
+	nh.param("arrived_th_xyz", arrived_th_xyz, 0.5);
+	nh.param("arrived_th_yaw", arrived_th_yaw, 0.2);
+	nh.param("control_factor", control_factor, 0.2);
 
 	watchdofPeriod = ros::Duration(1/watchdogFreq);
 
