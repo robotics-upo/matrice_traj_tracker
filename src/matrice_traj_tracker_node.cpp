@@ -113,7 +113,7 @@ void sendSpeedReference(float vx, float vy, float vz, float ry)
 								 //     0x00 - No active break 
 	
 	// Publish the message if control is allowed by he remote controller
-	if(fModeActive)
+	if(fModeActive || gazebo_sim)
 		controlPub.publish(cmd);
 }
 
