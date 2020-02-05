@@ -197,17 +197,17 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 		}
 		if(fabs(yaw_ref) < arrived_th_yaw)
 			yaw_ref = 0.0;
+
+			//It means that we reached the goal
+		if(x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
+			actionResult.arrived = true;
+			actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);
+			navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
+		}
 	}
 	else
 	{
 		yaw_ref = 0.0;
-	}
-	
-	//It means that we reached the goal
-	if(x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
-		actionResult.arrived = true;
-		actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);
-		navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
 	}
 	
 	// Compute commmanded velocities
