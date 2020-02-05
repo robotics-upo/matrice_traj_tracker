@@ -50,7 +50,6 @@ std::string droneFrame;
 //For the watchdog
 ros::Time lastT, currentT;
 ros::Duration watchdofPeriod;
-bool testing;
 bool gazebo_sim=false;
 void configMarker(){
 
@@ -156,11 +155,11 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 {
 	//cout << 1 << endl;
 	//Okey, if no goal active, forget about 
-	if(!testing && !navigationServer->isActive())
+	if(!navigationServer->isActive())
 		return;
 
 	currentT=msg->header.stamp;
-	if(!testing && currentT-lastT > watchdofPeriod){
+	if(currentT-lastT > watchdofPeriod){
 		ROS_WARN("Input trajectory timeout...");
 		lastT=currentT;
 		sendSpeedReference(0, 0, 0, 0);
@@ -205,7 +204,7 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	}
 	
 	//It means that we reached the goal
-	if(!testing && x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
+	if(x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
 		actionResult.arrived = true;
 		actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);
 		navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
@@ -236,7 +235,6 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 		vz = control_factor*vz;
 		ry = control_factor*ry;
 	}
-	
 	// Command the computed velocities
 	sendSpeedReference(vx, vy, vz, ry);
 	actionFb.speed.linear.x = vx;
@@ -244,8 +242,7 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	actionFb.speed.linear.z = vz;
 	actionFb.speed.angular.z = ry;
 	//TODO: Fill dist2Goal feedback field, not important right now
-	if(!testing)
-		navigationServer->publishFeedback(actionFb);
+	navigationServer->publishFeedback(actionFb);
 
 	//Publish markers
 	speedMarker.points[1].x = vx;
@@ -337,7 +334,7 @@ void navigatePreemptCallback(){
 
 	actionResult.arrived = false;
 	actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);//TODO: Put the real one
-	navigationServer->setPreempted(actionResult,"3D Navigation Goal Reached");
+	navigationServer->setPreempted(actionResult,"3D Navigation Goal Preempted Call received");
 }
 int main (int argc, char** argv)
 {
@@ -370,12 +367,8 @@ int main (int argc, char** argv)
 	double watchdogFreq;
 	if(!nh.getParam("gazebo_sim", gazebo_sim)){
 		gazebo_sim=false;
-		ROS_WARN("Gazebo mode");
 	}
-	if(!nh.getParam("testing", testing)){
-		testing=false;
-		ROS_WARN("Testing mode: Avoiding trajectory timeout and checking and navigate goal active checking");
-	}
+
 	if(!nh.getParam("drone_frame", droneFrame)){
 		droneFrame = "matrice";
 		ROS_WARN("Using default frame %s",droneFrame.c_str());
@@ -426,6 +419,7 @@ int main (int argc, char** argv)
 	ROS_INFO("Checking drone is in F-Mode ...");
 	if(gazebo_sim)
 		fModeActive=true;
+
 	while(!fModeActive)
 	{
 		ros::Duration(0.01).sleep();
