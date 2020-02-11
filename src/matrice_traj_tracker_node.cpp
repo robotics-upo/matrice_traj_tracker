@@ -363,6 +363,8 @@ void navigatePreemptCallback(){
 }
 void landingGoalCallback(){
 
+	landingGoal = landingServer->acceptNewGoal();
+
 	if(droneLanded){
 		std::string error_msg = "Not possible to land, drone already landed";
 		ROS_ERROR("Error %s", error_msg.c_str());
@@ -371,10 +373,6 @@ void landingGoalCallback(){
 		landingServer->setAborted(landingResult);
 		return;
 	}
-
-
-	landingGoal = landingServer->acceptNewGoal();
-
 	if(!fModeActive){
 		std::string error_msg = "Drone is not in F-Mode, aborting landing";
 		ROS_ERROR("Error %s", error_msg.c_str());
@@ -404,12 +402,23 @@ void landingGoalCallback(){
 
 	landingServer->setSucceeded(landingResult);
 	droneLanded=true;
+	ROS_INFO("Drone Landed");
 	
 }
 
 void takeOffGoalCallback(){
 
 	takeOffGoal = takeOffServer->acceptNewGoal();
+
+	if(!droneLanded)
+	{
+		std::string error_msg = "Take off done before";
+		ROS_ERROR("Error %s", error_msg.c_str());
+		takeOffResult.success=false;
+		takeOffResult.extra_info=error_msg;
+		takeOffServer->setAborted(takeOffResult);
+		return;
+	}
 	// Get takeoff altitude
 	ROS_INFO("Checking takeoff altitude ...");
 	while(takeOffGoal->takeoff_height.data < -10000.0)
