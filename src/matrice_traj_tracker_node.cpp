@@ -30,6 +30,8 @@ typedef actionlib::SimpleActionServer<upo_actions::TakeOffAction> TakeOffServer;
 
 // Global variables
 bool fModeActive = false;
+bool droneLanded = true;
+
 uint8_t flight_status = 255;
 uint8_t display_mode  = 255;
 double height = -100000.0, landingHeight = -100000.0;
@@ -60,6 +62,8 @@ upo_actions::TakeOffFeedback takeOffFb;
 upo_actions::TakeOffResult takeOffResult;
 upo_actions::TakeOffGoalConstPtr takeOffGoal;
 
+//Service clients
+ros::ServiceClient ctrl_authority_service,drone_task_service;
 visualization_msgs::Marker speedMarker,rotMarker;
 //Used to set the marker frame
 std::string droneFrame;
@@ -341,6 +345,10 @@ bool monitoredTakeoff(void)
 }
 void navigateGoalCallback(){
 
+	if(droneLanded){
+		ROS_ERROR("Not possible to navigate, take off first");
+		return;
+	}
 	//TODO: Okey if a new goal is while we are navigating to another goal it means that the trajectory has been re-calculated. So what to do?
 	actionGoal = navigationServer->acceptNewGoal();
 	//As it you don't refuse the first trajectory
@@ -352,6 +360,139 @@ void navigatePreemptCallback(){
 	actionResult.arrived = false;
 	actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);//TODO: Put the real one
 	navigationServer->setPreempted(actionResult,"3D Navigation Goal Preempted Call received");
+}
+void landingGoalCallback(){
+
+	if(droneLanded){
+		std::string error_msg = "Not possible to land, drone already landed";
+		ROS_ERROR("Error %s", error_msg.c_str());
+		landingResult.success=false;
+		landingResult.extra_info=error_msg;
+		landingServer->setAborted(landingResult);
+		return;
+	}
+
+
+	landingGoal = landingServer->acceptNewGoal();
+
+	if(!fModeActive){
+		std::string error_msg = "Drone is not in F-Mode, aborting landing";
+		ROS_ERROR("Error %s", error_msg.c_str());
+		landingResult.success=false;
+		landingResult.extra_info=error_msg;
+
+		landingServer->setAborted(landingResult);
+		return;
+	}
+	ROS_INFO("Requesting landing...");
+	dji_sdk::DroneTaskControl droneTaskControl;
+	droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_LAND;
+	drone_task_service.call(droneTaskControl);
+
+	if(!droneTaskControl.response.result)
+	{
+		std::string error_msg {"Drone task control bad response"};
+		ROS_ERROR("Error %s", error_msg.c_str());
+		landingResult.success=false;
+		landingResult.extra_info=error_msg;
+		landingServer->setAborted(landingResult);
+		return;
+	}
+
+	landingResult.success = true;
+	landingResult.extra_info = "Landing Okay";
+
+	landingServer->setSucceeded(landingResult);
+	droneLanded=true;
+	
+}
+
+void takeOffGoalCallback(){
+
+	takeOffGoal = takeOffServer->acceptNewGoal();
+	// Get takeoff altitude
+	ROS_INFO("Checking takeoff altitude ...");
+	while(takeOffGoal->takeoff_height.data < -10000.0)
+	{
+		ros::Duration(0.01).sleep();
+		ros::spinOnce();
+	} 
+	landingHeight = height; 
+	ROS_INFO("\tdone!");
+
+	// Check the drone is in F-Mode before starting
+	ROS_INFO("Checking drone is in F-Mode ...");
+
+	while(!fModeActive)
+	{
+		ros::Duration(0.01).sleep();
+		ros::spinOnce();
+	}  
+	ROS_INFO("\tdone!");
+
+	// Get control authority
+	ROS_INFO("Getting control authority ...");
+	dji_sdk::SDKControlAuthority authority;
+	authority.request.control_enable=1;
+	ctrl_authority_service.call(authority);
+	if(!authority.response.result)
+	{
+		std::string error_msg {"impossible to obtain drone control!"};
+		ROS_ERROR("Error %s", error_msg.c_str());
+
+		takeOffResult.success=false;
+		takeOffResult.extra_info=error_msg;
+		takeOffServer->setAborted(takeOffResult);
+		return;
+	}
+	
+	ROS_INFO("\tdone!");
+
+    // Perform automatic take-off
+    ROS_INFO("Taking-off ...");
+	dji_sdk::DroneTaskControl droneTaskControl;
+	
+	droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_TAKEOFF;
+		
+	drone_task_service.call(droneTaskControl);
+	if(!droneTaskControl.response.result)
+	{
+		std::string error_msg {"Drone task control bad response"};
+		ROS_ERROR("Error %s", error_msg.c_str());
+		takeOffResult.success=false;
+		takeOffResult.extra_info=error_msg;
+		takeOffServer->setAborted(takeOffResult);
+		return;
+	}
+	
+	if(!monitoredTakeoff()){
+		std::string error_msg {"Monitored takeoff error"};
+		ROS_ERROR("Error %s", error_msg.c_str());
+		takeOffResult.success=false;
+		takeOffResult.extra_info=error_msg;
+		takeOffServer->setAborted(takeOffResult);
+		return;
+	}
+	ROS_INFO("\tdone!");
+
+	// Fly up until reaching the takeoff altitude
+	ROS_INFO("Climbing to takeoff height ...");
+	while((height-landingHeight)-takeOffGoal->takeoff_height.data < 0)
+	{
+		takeOffFb.percent_achieved.data = (height-landingHeight)-takeOffGoal->takeoff_height.data;
+		takeOffServer->publishFeedback(takeOffFb);
+		sendSpeedReference(0.0, 0.0, max_vz, 0.0);
+		ros::spinOnce();
+		ros::Duration(0.01).sleep();
+	}  
+	sendSpeedReference(0.0, 0.0, 0.0, 0.0);
+	ros::spinOnce();
+	ROS_INFO("\tdone!");
+	takeOffResult.success=true;
+	takeOffResult.extra_info="TakeOff Done";
+
+	takeOffServer->setSucceeded(takeOffResult);
+	droneLanded = false;
 }
 int main (int argc, char** argv)
 {
@@ -370,14 +511,24 @@ int main (int argc, char** argv)
 	heightAboveTakeoffPub = nh.advertise<std_msgs::Float64>("/height_above_takeoff", 0);
 	
 	// Required services
-	ros::ServiceClient ctrl_authority_service = nh.serviceClient<dji_sdk::SDKControlAuthority> ("/dji_sdk/sdk_control_authority");
-	ros::ServiceClient drone_task_service = nh.serviceClient<dji_sdk::DroneTaskControl>("/dji_sdk/drone_task_control");
+	ctrl_authority_service = nh.serviceClient<dji_sdk::SDKControlAuthority> ("/dji_sdk/sdk_control_authority");
+	drone_task_service = nh.serviceClient<dji_sdk::DroneTaskControl>("/dji_sdk/drone_task_control");
 
 	//Start action server to communicate with local planner
 	navigationServer.reset(new NavigationServer(nh,"/Navigation3D",false));
     navigationServer->registerGoalCallback(boost::function<void()>(navigateGoalCallback));
     navigationServer->registerPreemptCallback(boost::function<void()>(navigatePreemptCallback));
     navigationServer->start();
+
+	//Start action server to receive takeoff requests
+	takeOffServer.reset(new TakeOffServer(nh,"/TakeOff",false));
+    takeOffServer->registerGoalCallback(boost::function<void()>(takeOffGoalCallback));
+    takeOffServer->start();
+
+	//Start action server to receive landing commands
+	landingServer.reset(new LandingServer(nh,"/Landing",false));
+    landingServer->registerGoalCallback(boost::function<void()>(landingGoalCallback));
+    landingServer->start();
 
 	// Read node parameters
 	double takeoffHeight;
@@ -422,74 +573,6 @@ int main (int argc, char** argv)
 
 	watchdofPeriod = ros::Duration(1/watchdogFreq);
 
-	// Get takeoff altitude
-	ROS_INFO("Checking takeoff altitude ...");
-	while(height < -10000.0)
-	{
-		ros::Duration(0.01).sleep();
-		ros::spinOnce();
-	} 
-	landingHeight = height; 
-	ROS_INFO("\tdone!");
-
-	// Check the drone is in F-Mode before starting
-	ROS_INFO("Checking drone is in F-Mode ...");
-	if(gazebo_sim)
-		fModeActive=true;
-
-	while(!fModeActive)
-	{
-		ros::Duration(0.01).sleep();
-		ros::spinOnce();
-	}  
-	ROS_INFO("\tdone!");
-
-	// Get control authority
-	ROS_INFO("Getting control authority ...");
-	if(!gazebo_sim){
-		dji_sdk::SDKControlAuthority authority;
-		authority.request.control_enable=1;
-		ctrl_authority_service.call(authority);
-		if(!authority.response.result)
-		{
-			ROS_ERROR("impossible to obtain drone control!");
-			return -1;
-		}
-	}
-	ROS_INFO("\tdone!");
-
-    // Perform automatic take-off
-    ROS_INFO("Taking-off ...");
-    if(!gazebo_sim){
-		dji_sdk::DroneTaskControl droneTaskControl;
-	
-		droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_TAKEOFF;
-		
-		drone_task_service.call(droneTaskControl);
-		if(!droneTaskControl.response.result)
-		{
-		ROS_ERROR("takeoff fail!");
-		return -1;
-		}
-	}
-
-	
-	if(!gazebo_sim && !monitoredTakeoff())
-		return -1;
-	ROS_INFO("\tdone!");
-
-	// Fly up until reaching the takeoff altitude
-	ROS_INFO("Climbing to takeoff height ...");
-	while(!gazebo_sim && (height-landingHeight)-takeoffHeight < 0)
-	{
-		sendSpeedReference(0.0, 0.0, max_vz, 0.0);
-		ros::spinOnce();
-		ros::Duration(0.01).sleep();
-	}  
-	sendSpeedReference(0.0, 0.0, 0.0, 0.0);
-	ros::spinOnce();
-	ROS_INFO("\tdone!");
-	
 	// Spin forever
 	ros::spin();
 	
