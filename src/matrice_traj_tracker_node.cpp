@@ -13,12 +13,18 @@
 #include <tf/transform_datatypes.h>
 
 #include <upo_actions/Navigate3DAction.h>
+#include <upo_actions/LandingAction.h>
+#include <upo_actions/TakeOffAction.h>
+
 #include <actionlib/server/simple_action_server.h>
 #include <visualization_msgs/Marker.h>
 
 
 using namespace std;
 typedef actionlib::SimpleActionServer<upo_actions::Navigate3DAction> NavigationServer;
+typedef actionlib::SimpleActionServer<upo_actions::LandingAction> LandingServer;
+typedef actionlib::SimpleActionServer<upo_actions::TakeOffAction> TakeOffServer;
+
 
 #define FLOAT_SIGN(val) (val > 0.0) ? +1.0 : -1.0
 
@@ -38,10 +44,21 @@ double max_vx, max_vy, max_vz, max_ry;
 double min_vx, min_vy, min_vz, min_ry;
 
 //Upo actions stuff
+//Navigation server
 std::unique_ptr<NavigationServer> navigationServer;
 upo_actions::Navigate3DFeedback actionFb;
 upo_actions::Navigate3DResult actionResult;
 upo_actions::Navigate3DGoalConstPtr actionGoal;
+//TakeOff Server
+std::unique_ptr<LandingServer> landingServer;
+upo_actions::LandingFeedback landingFb;
+upo_actions::LandingResult landingResult;
+upo_actions::LandingGoalConstPtr landingGoal;
+//Landing Server
+std::unique_ptr<TakeOffServer> takeOffServer;
+upo_actions::TakeOffFeedback takeOffFb;
+upo_actions::TakeOffResult takeOffResult;
+upo_actions::TakeOffGoalConstPtr takeOffGoal;
 
 visualization_msgs::Marker speedMarker,rotMarker;
 //Used to set the marker frame
