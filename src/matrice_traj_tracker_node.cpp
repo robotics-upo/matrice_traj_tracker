@@ -72,6 +72,7 @@ std::string droneFrame;
 ros::Time lastT, currentT;
 ros::Duration watchdofPeriod;
 bool gazebo_sim=false;
+bool speed_ref_mode = false;
 void configMarker(){
 
 	geometry_msgs::Point p1,p2;
@@ -116,6 +117,7 @@ void configMarker(){
     rotMarker.color.r = 1.0;
 
 }
+
 void sendSpeedReference(float vx, float vy, float vz, float ry)
 {
 	// Build the message 
@@ -129,6 +131,47 @@ void sendSpeedReference(float vx, float vy, float vz, float ry)
 								 // Control flags used: 
 								 //		0x40 - Command horizontal velocities - Ground/Body - 30 m/s 
 								 //     0x00 - Command the vertical speed - Ground - -5 to 5 m/s
+								 //     0x08 - Command yaw rate - Ground - 5⁄6π rad/s 
+								 //     0x02 - Horizontal command is body_FLU frame 
+								 //     0x00 - No active break 
+	
+	// Publish the message if control is allowed by he remote controller
+	if(fModeActive || gazebo_sim)
+		controlPub.publish(cmd);
+}
+void sendRelPoseYaw(float x, float y, float z, float ry){
+// Build the message 
+	sensor_msgs::Joy cmd;
+	cmd.header.stamp = ros::Time::now();
+	cmd.axes.push_back(x); // relative X in body  
+	cmd.axes.push_back(y); // relative Y in body
+	cmd.axes.push_back(z); // Z in world
+	cmd.axes.push_back(ry); // Yaw rate
+	cmd.axes.push_back(0x80 | 0x10 | 0x00 | 0x02 | 0x00); // Control flags
+								 // Control flags used: 
+								 //		0x80 - Command position offsets  
+								 //     0x10 - Command altitude - Ground - 0 to 120 m 
+								 //     0x00 - Command yaw angle - Ground - -π to π 
+								 //     0x02 - Horizontal command is body_FLU frame 
+								 //     0x00 - No active break 
+	
+	// Publish the message if control is allowed by he remote controller
+	if(fModeActive || gazebo_sim)
+		controlPub.publish(cmd);
+}
+void sendRelPoseReference(float x, float y, float z, float ry)
+{
+	// Build the message 
+	sensor_msgs::Joy cmd;
+	cmd.header.stamp = ros::Time::now();
+	cmd.axes.push_back(x); // relative X in body  
+	cmd.axes.push_back(y); // relative Y in body
+	cmd.axes.push_back(z); // Z in world
+	cmd.axes.push_back(ry); // Yaw rate
+	cmd.axes.push_back(0x80 | 0x10 | 0x08 | 0x02 | 0x00); // Control flags
+								 // Control flags used: 
+								 //		0x80 - Command position offsets  
+								 //     0x10 - Command altitude - Ground - 0 to 120 m 
 								 //     0x08 - Command yaw rate - Ground - 5⁄6π rad/s 
 								 //     0x02 - Horizontal command is body_FLU frame 
 								 //     0x00 - No active break 
@@ -230,50 +273,53 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	{
 		yaw_ref = 0.0;
 	}
-	
+	if(speed_ref_mode){
 	// Compute commmanded velocities
-	double vx, vy, vz, ry;
-	if(fabs(x_ref) > 1.0)
-		vx = max_vx*FLOAT_SIGN(x_ref);
-	else
-		vx = max_vx*x_ref;
-	if(fabs(y_ref) > 1.0)
-		vy = max_vy*FLOAT_SIGN(y_ref);
-	else
-		vy = max_vy*y_ref;
-	if(fabs(z_ref) > 1.0)
-		vz = max_vz*FLOAT_SIGN(z_ref);
-	else
-		vz = max_vz*z_ref;
-	if(fabs(yaw_ref) > 1.0)
-		ry = max_ry*FLOAT_SIGN(yaw_ref);
-	else
-		ry = max_ry*yaw_ref;
-	if(msg->points.size() == 1)
-	{
-		vx = control_factor*vx;
-		vy = control_factor*vy;
-		vz = control_factor*vz;
-		ry = control_factor*ry;
-	}
-	// Command the computed velocities
-	sendSpeedReference(vx, vy, vz, ry);
-	actionFb.speed.linear.x = vx;
-	actionFb.speed.linear.y = vy;
-	actionFb.speed.linear.z = vz;
-	actionFb.speed.angular.z = ry;
-	//TODO: Fill dist2Goal feedback field, not important right now
-	navigationServer->publishFeedback(actionFb);
+		double vx, vy, vz, ry;
+		if(fabs(x_ref) > 1.0)
+			vx = max_vx*FLOAT_SIGN(x_ref);
+		else
+			vx = max_vx*x_ref;
+		if(fabs(y_ref) > 1.0)
+			vy = max_vy*FLOAT_SIGN(y_ref);
+		else
+			vy = max_vy*y_ref;
+		if(fabs(z_ref) > 1.0)
+			vz = max_vz*FLOAT_SIGN(z_ref);
+		else
+			vz = max_vz*z_ref;
+		if(fabs(yaw_ref) > 1.0)
+			ry = max_ry*FLOAT_SIGN(yaw_ref);
+		else
+			ry = max_ry*yaw_ref;
+		if(msg->points.size() == 1)
+		{
+			vx = control_factor*vx;
+			vy = control_factor*vy;
+			vz = control_factor*vz;
+			ry = control_factor*ry;
+		}
+		// Command the computed velocities
+		sendSpeedReference(vx, vy, vz, ry);
+		actionFb.speed.linear.x = vx;
+		actionFb.speed.linear.y = vy;
+		actionFb.speed.linear.z = vz;
+		actionFb.speed.angular.z = ry;
+		//TODO: Fill dist2Goal feedback field, not important right now
+		navigationServer->publishFeedback(actionFb);
 
-	//Publish markers
-	speedMarker.points[1].x = vx;
-	speedMarker.points[1].y = vy;
-	speedMarker.points[1].z = vz;
+		//Publish markers
+		speedMarker.points[1].x = vx;
+		speedMarker.points[1].y = vy;
+		speedMarker.points[1].z = vz;
 
-	rotMarker.scale.x = ry;
+		rotMarker.scale.x = ry;
 
-	speedMarkerPub.publish(speedMarker);
-	speedMarkerPub.publish(rotMarker);
+		speedMarkerPub.publish(speedMarker);
+		speedMarkerPub.publish(rotMarker);
+	}else{
+		sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
+	}	
 }
 
 
@@ -499,7 +545,20 @@ void takeOffGoalCallback(){
 	ROS_INFO("\tdone!");
 	takeOffResult.success=true;
 	takeOffResult.extra_info="TakeOff Done";
+	
 
+	/*sendRelPoseReference(0.0, 0.0, takeOffGoal->takeoff_height.data, 0.0);
+	ros::spinOnce();
+	while(fabs((height-landingHeight)-takeOffGoal->takeoff_height.data) < 0.3)
+	{
+		ros::spinOnce();
+		ros::Duration(0.01).sleep();
+	} 
+
+	ROS_INFO("\tdone!");
+	takeOffResult.success=true;
+	takeOffResult.extra_info="TakeOff Done";
+*/
 	takeOffServer->setSucceeded(takeOffResult);
 	droneLanded = false;
 }
@@ -579,6 +638,7 @@ int main (int argc, char** argv)
 	nh.param("arrived_th_xyz", arrived_th_xyz, 0.5);
 	nh.param("arrived_th_yaw", arrived_th_yaw, 0.2);
 	nh.param("control_factor", control_factor, 0.2);
+	nh.param("speed_reference_mode", speed_ref_mode, false);
 
 	watchdofPeriod = ros::Duration(1/watchdogFreq);
 
