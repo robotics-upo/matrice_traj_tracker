@@ -31,7 +31,7 @@ typedef actionlib::SimpleActionServer<upo_actions::TakeOffAction> TakeOffServer;
 // Global variables
 bool fModeActive = false;
 bool droneLanded = true;
-
+std::string drone_type;
 uint8_t flight_status = 255;
 uint8_t display_mode  = 255;
 double height = -100000.0, landingHeight = -100000.0;
@@ -184,10 +184,18 @@ void sendRelPoseReference(float x, float y, float z, float ry)
 // RC callback to read if drone is in F mode (allowed for automatic control)
 void rc_callback(const sensor_msgs::Joy::ConstPtr &msg)
 {
-	if(msg->axes[4] < -1000)
+	if(drone_type=="m210"){
+if(msg->axes[4] > 1000)
 		fModeActive = true;
 	else
 		fModeActive = false;
+	}else if(drone_type=="m600"){
+if(msg->axes[4] < -1000)
+		fModeActive = true;
+	else
+		fModeActive = false;
+	}
+	
 }	
 
 // Drone flight status callback
@@ -601,6 +609,7 @@ int main (int argc, char** argv)
 	// Read node parameters
 	double takeoffHeight;
 	double watchdogFreq;
+	nh.param("drone_model", drone_type, (std::string)"m600");
 	if(!nh.getParam("gazebo_sim", gazebo_sim)){
 		gazebo_sim=false;
 	}
