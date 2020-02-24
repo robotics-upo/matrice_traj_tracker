@@ -11,6 +11,7 @@
 #include <dji_sdk/SDKControlAuthority.h>
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
 #include <tf/transform_datatypes.h>
+#include <tf/transform_listener.h>
 
 #include <upo_actions/Navigate3DAction.h>
 #include <upo_actions/LandingAction.h>
@@ -38,6 +39,8 @@ double height = -100000.0, landingHeight = -100000.0;
 ros::Publisher controlPub, speedMarkerPub, heightAboveTakeoffPub;
 double x_ref, y_ref, z_ref, yaw_ref;
 double control_factor, arrived_th_xyz, arrived_th_yaw;
+tf::TransformListener *tfListener;
+double goal_yaw;
 
 //Used to publish the real distance to the goal when arrived(Mostly debugging purposes)
 double x_old, y_old, z_old;
@@ -248,10 +251,27 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	                 msg->points[0].transforms[0].rotation.y, 
 	                 msg->points[0].transforms[0].rotation.z, 
 	                 msg->points[0].transforms[0].rotation.w);
-	double r, p;
+	double r, p, yaw, yaw_ref;
 	tf::Matrix3x3 m(q);
 	m.getRPY(r, p, yaw_ref);
 	
+	// PATCH to Fali's mess with orientation of final goal 
+	// REMOVE IN THE FUTURE!!!!!
+	tf::StampedTransform baseTf;
+	try
+	{
+		tfListener->waitForTransform("world", "base_link", ros::Time(0), ros::Duration(.1));
+		tfListener->lookupTransform("world", "base_link", ros::Time(0), baseTf);
+	}
+	catch (tf::TransformException ex)
+	{
+		ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
+		return;
+	}
+	tf::Matrix3x3 m2(baseTf.getRotation());
+	m2.getRPY(r, p, yaw);
+	yaw_ref = goal_yaw-yaw;
+
 	// Apply lower bound to the given refence only when last wayoint is used
 	if(msg->points.size() == 1)
 	{
@@ -407,6 +427,16 @@ void navigateGoalCallback(){
 	actionGoal = navigationServer->acceptNewGoal();
 	//As it you don't refuse the first trajectory
 	currentT = ros::Time::now();
+
+	// PATCH: Get yaw from goal
+	// REMOVE in the future!!!!
+	tf::Quaternion q(actionGoal->global_goal.pose.orientation.x, 
+	                 actionGoal->global_goal.pose.orientation.y, 
+	                 actionGoal->global_goal.pose.orientation.z, 
+	                 actionGoal->global_goal.pose.orientation.w);
+	double r, p;
+	tf::Matrix3x3 m(q);
+	m.getRPY(r, p, goal_yaw);
 }
 //Okey, this callback is reached when publishing over Navigate3D/cancel topic a empty message
 void navigatePreemptCallback(){
@@ -586,6 +616,9 @@ int main (int argc, char** argv)
 	controlPub = nh.advertise<sensor_msgs::Joy>("/dji_sdk/flight_control_setpoint_generic", 0);    
 	heightAboveTakeoffPub = nh.advertise<std_msgs::Float64>("/height_above_takeoff", 0);
 	
+	// Start TF listener
+	tfListener = new tf::TransformListener;
+
 	// Required services
 	ctrl_authority_service = nh.serviceClient<dji_sdk::SDKControlAuthority> ("/dji_sdk/sdk_control_authority");
 	drone_task_service = nh.serviceClient<dji_sdk::DroneTaskControl>("/dji_sdk/drone_task_control");
