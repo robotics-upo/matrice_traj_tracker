@@ -521,7 +521,7 @@ void navigateGoalCallback(){
 		return;
 	}
 	else{
-		printf("matrice_traj_tracker_node: receiving new goal to navigate\n");
+		ROS_INFO("Matrice_traj_tracker_node: receiving new goal to navigate");
 	}
 	//TODO: Okey if a new goal is while we are navigating to another goal it means that the trajectory has been re-calculated. So what to do?
 	actionGoal = navigationServer->acceptNewGoal();

@@ -13,8 +13,9 @@
         <param name="watchdog_freq" type="double" value="7.0"/>
         <param name="testing" value="false" />
         <param name="gazebo_sim" value="true" />
-        <param name="drone_model" value="m210" />droneFrame
+        <param name="drone_model" value="m210" />
         <param name="droneFrame" value="firefly/base_link" />
+        <param name="speed_reference_mode" value="true" />
         <remap from="/dji_sdk/rc" to="/firefly/joy" />
         <remap from="/dji_sdk/gps_position" to="/firefly/gps" />
     </node>
