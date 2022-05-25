@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   dji_sdk
   tf
   upo_actions
+  mav_msgs
 )
 find_package(DJIOSDK REQUIRED)
 
@@ -111,7 +112,7 @@ find_package(DJIOSDK REQUIRED)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES matrice_traj_tracker
-  CATKIN_DEPENDS roscpp sensor_msgs trajectory_msgs upo_actions
+  CATKIN_DEPENDS roscpp sensor_msgs trajectory_msgs upo_actions mav_msgs
 #  DEPENDS system_lib
 )
 
