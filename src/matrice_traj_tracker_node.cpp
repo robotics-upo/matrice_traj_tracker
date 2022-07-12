@@ -40,6 +40,8 @@ double x_ref, y_ref, z_ref, yaw_ref;
 double control_factor, arrived_th_xyz, arrived_th_yaw;
 tf::TransformListener *tfListener;
 double goal_yaw;
+std::string base_frame_id_ = "base_link";
+std::string global_frame_id_ = "world";
 
 //Used to publish the real distance to the goal when arrived(Mostly debugging purposes)
 double x_old, y_old, z_old;
@@ -138,7 +140,7 @@ void sendSpeedReference(float vx, float vy, float vz, float ry)
   //    0x00 - No active break 
 	
   // Publish the message if control is allowed by he remote controller
-  if(fModeActive || gazebo_sim)
+  if(fModeActive)
     controlPub.publish(cmd);
 }
 
@@ -159,7 +161,7 @@ void sendRelPoseYaw(float x, float y, float z, float ry){
   //     0x00 - No active break 
 	
   // Publish the message if control is allowed by he remote controller
-  if(fModeActive || gazebo_sim)
+  if(fModeActive)
     controlPub.publish(cmd);
 }
 
@@ -181,7 +183,7 @@ void sendRelPoseReference(float x, float y, float z, float ry)
   //    0x00 - No active break 
 	
   // Publish the message if control is allowed by he remote controller
-  if(fModeActive || gazebo_sim)
+  if(fModeActive)
     controlPub.publish(cmd);
 }
 
@@ -260,8 +262,8 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
   tf::StampedTransform baseTf;
   try
     {
-      tfListener->waitForTransform("world", "base_link", ros::Time(0), ros::Duration(.1));
-      tfListener->lookupTransform("world", "base_link", ros::Time(0), baseTf);
+      tfListener->waitForTransform(global_frame_id_, base_frame_id_, ros::Time(0), ros::Duration(.1));
+      tfListener->lookupTransform(global_frame_id_, base_frame_id_, ros::Time(0), baseTf);
     }
   catch (tf::TransformException ex)
     {
@@ -649,10 +651,15 @@ int main (int argc, char** argv)
   // Read node parameters
   double takeoffHeight;
   double watchdogFreq;
+
+  nh.param("base_frame_id", base_frame_id_, (std::string)"base_link");
+  nh.param("global_frame_id", global_frame_id_, (std::string)"world");
+  
   nh.param("drone_model", drone_type, (std::string)"m600");
   if(!nh.getParam("gazebo_sim", gazebo_sim)){
     gazebo_sim=false;
   }
+  fModeActive = gazebo_sim; // If gazebo sim --> we consider the FMode to be active 
 
   if(!nh.getParam("drone_frame", droneFrame)){
     droneFrame = "matrice";
