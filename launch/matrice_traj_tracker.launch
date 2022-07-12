@@ -1,5 +1,6 @@
 <launch>
-    <node pkg="matrice_traj_tracker" type="matrice_traj_tracker_node" name="matrice_traj_tracker_node" output="screen">
+    <node pkg="matrice_traj_tracker" type="matrice_traj_tracker_node"
+    name="matrice_traj_tracker_node" output="screen">
     <!-- node parameters -->
         <param name="takeoff_height" type="double" value="3.0"/>
         <param name="max_vx" type="double" value="0.5"/>
