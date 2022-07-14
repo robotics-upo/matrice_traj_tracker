@@ -517,13 +517,7 @@ void navigateGoalCallback(){
 	//As it you don't refuse the first trajectory
 	currentT = ros::Time::now();
 
-	// PATCH: Get yaw from goal
-	// REMOVE in the future!!!!
-	// Get the reference position and orientation
-	double x_goal_, y_goal_, z_goal_;
-	x_goal_ = actionGoal->global_goal.pose.position.x;
-	y_goal_ = actionGoal->global_goal.pose.position.y;
-	z_goal_ = actionGoal->global_goal.pose.position.z;
+	// Get yaw from goal
 	tf::Quaternion q(actionGoal->global_goal.pose.orientation.x, 
 	                 actionGoal->global_goal.pose.orientation.y, 
 	                 actionGoal->global_goal.pose.orientation.z, 
@@ -534,18 +528,25 @@ void navigateGoalCallback(){
 	m.getRPY(r, p, yaw_goal);
 
 	tf::StampedTransform baseTf;
+	tf::Stamped<tf::Point> global_goal_point, local_goal_point;
+	global_goal_point.frame_id_ = global_frame_id;
+	global_goal_point.setX(actionGoal->global_goal.pose.position.x);
+	global_goal_point.setY(actionGoal->global_goal.pose.position.y);
+	global_goal_point.setZ(actionGoal->global_goal.pose.position.z);
 
-	ROS_INFO("Matrice_traj_tracker_node:	goal=[%f %f %f / %f]", x_goal_,y_goal_,z_goal_, yaw_goal);
+	ROS_INFO("Matrice_traj_tracker_node:	goal=[%f %f %f / %f]", global_goal_point.getX(),
+																	global_goal_point.getY(),
+																	global_goal_point.getZ(), yaw_goal);
 
-	x_ref = y_ref = z_ref = 1000;
-	bool achieved_x_, achieved_y_, achieved_z_, achieved_yaw_;
+	bool achieved_x_ = false, achieved_y_ = false, achieved_z_ = false, achieved_yaw_ = false;
 	ros::Time start_time = ros::Time::now();
-    while ( (fabs(x_ref)>=  arrived_th_xyz || fabs(y_ref) >=  arrived_th_xyz || fabs(z_ref) >=  arrived_th_xyz ) ) 
+    while ( !(achieved_x_ && achieved_y_ && achieved_yaw_ && achieved_z_)  ) 
 	{
 		try
 		{
 			tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
 			tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
+			tfListener->transformPoint(droneFrame, ros::Time(0), global_goal_point, global_frame_id, local_goal_point);
 		}
 		catch (tf::TransformException ex)
 		{
@@ -559,11 +560,11 @@ void navigateGoalCallback(){
 		tf_traslation_ = baseTf.getOrigin();
 
 		yaw_ref = yaw_goal - yaw;
-		x_ref = x_goal_ - tf_traslation_.x();
-		y_ref = y_goal_ - tf_traslation_.y();
-		z_ref = z_goal_ - tf_traslation_.z();
-		printf("goal=[%f %f %f / %f]  tf=[%f %f %f / %f] fabs[%f %f %f / %f] \n"
-		,x_goal_,y_goal_,z_goal_, yaw_goal,tf_traslation_.x() ,tf_traslation_.y() ,tf_traslation_.z(), yaw ,fabs(x_ref),fabs(y_ref),fabs(z_ref),yaw_ref);
+		x_ref = local_goal_point.getX();
+		y_ref = local_goal_point.getY();
+		z_ref = local_goal_point.getZ();
+		printf("error[%f %f %f / %f] \r"
+		,x_ref,y_ref,z_ref,yaw_ref);
 
 		achieved_x_ = achieved_y_ = achieved_z_ = achieved_yaw_ = false;
 		if(fabs(x_ref) < arrived_th_xyz)
@@ -574,15 +575,6 @@ void navigateGoalCallback(){
 			achieved_z_ = true;
 		if(fabs(yaw_ref) < arrived_th_yaw)
 			achieved_yaw_ = true;
-		
-		//It means that we reached the goal
-		// if(achieved_x_ && achieved_y_ && achieved_z_ && achieved_yaw_ ){
-		if(achieved_x_ && achieved_y_ && achieved_z_ ){
-			ROS_INFO("Matrice_traj_tracker_node: Achieved Goal!!!");
-			actionResult.arrived = true;
-			actionResult.finalDist.data = sqrt(z_ref*z_ref+y_ref*y_ref+x_ref*x_ref);
-			navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
-		}
 
 		if(speed_ref_mode){
 		// Compute commmanded velocitiesx_ref
@@ -644,10 +636,15 @@ void navigateGoalCallback(){
 			speedMarkerPub.publish(speedMarker);
 			speedMarkerPub.publish(rotMarker);
 		}else{
-			sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
+			ROS_ERROR("Relative pose control not allowed");
+			// sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
 		}	
 
 	}
+	ROS_INFO("Matrice_traj_tracker_node: Achieved Goal!!!");
+	actionResult.arrived = true;
+	actionResult.finalDist.data = sqrt(z_ref*z_ref+y_ref*y_ref+x_ref*x_ref);
+	navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
 	sendSpeedReference(0.0, 0.0, 0.0, 0.0);
 }
 
@@ -902,8 +899,8 @@ int main (int argc, char** argv)
 		min_ry = 0.25;
 	if(!nh.getParam("watchdog_freq", watchdogFreq))
 		watchdogFreq = 5.0;
-	nh.param("arrived_th_xyz", arrived_th_xyz, 0.4);
-	nh.param("arrived_th_yaw", arrived_th_yaw, 0.9);
+	nh.param("arrived_th_xyz", arrived_th_xyz, 0.25);
+	nh.param("arrived_th_yaw", arrived_th_yaw, 0.2);
 	nh.param("control_factor", control_factor, 0.2);
 	nh.param("speed_reference_mode", speed_ref_mode, false);
 
