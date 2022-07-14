@@ -73,7 +73,7 @@ upo_actions::TakeOffGoalConstPtr takeOffGoal;
 ros::ServiceClient ctrl_authority_service,drone_task_service;
 visualization_msgs::Marker speedMarker,rotMarker;
 //Used to set the marker frame
-std::string droneFrame;
+std::string droneFrame, global_frame_id;
 
 //For the watchdog
 ros::Time lastT, currentT;
@@ -143,7 +143,7 @@ void sendSpeedReference(float vx, float vy, float vz, float ry)
 								 //     0x00 - No active break 
 	
 	// Publish the message if control is allowed by he remote controller
-	if(fModeActive || gazebo_sim)
+	if(fModeActive)
 		controlPub.publish(cmd);
 }
 
@@ -164,7 +164,7 @@ void sendRelPoseYaw(float x, float y, float z, float ry){
 								 //     0x00 - No active break 
 	
 	// Publish the message if control is allowed by he remote controller
-	if(fModeActive || gazebo_sim)
+	if(fModeActive)
 		controlPub.publish(cmd);
 }
 
@@ -186,7 +186,7 @@ void sendRelPoseReference(float x, float y, float z, float ry)
 								 //     0x00 - No active break 
 	
 	// Publish the message if control is allowed by he remote controller
-	if(fModeActive || gazebo_sim)
+	if(fModeActive)
 		controlPub.publish(cmd);
 }
 
@@ -201,33 +201,17 @@ void MotorSpeedCallback(const mav_msgs::ActuatorsConstPtr& msg_)
 // RC callback to read if drone is in F mode (allowed for automatic control)
 void rc_callback(const sensor_msgs::Joy::ConstPtr &msg)
 {
-	if(drone_type=="m210"){
-		if(!gazebo_sim){
-			if(msg->axes[4] > 1000)
-				fModeActive = true;
-			else
-				fModeActive = false;
-		}
-		else{
-			if(msg->axes[1] == 1)
-				fModeActive = true;
-			else
-				fModeActive = false;
-		}
-	}
-	else if(drone_type=="m600"){
-		if(!gazebo_sim){
-			if(msg->axes[4] < -1000)
-				fModeActive = true;
-			else
-				fModeActive = false;
-		}
-		else{
-			if(msg->axes[1] == 1)
-				fModeActive = true;
-			else
-				fModeActive = false;
-		}
+	fModeActive = gazebo_sim;
+	if(drone_type=="m210") {
+		if(msg->axes[4] > 1000)
+			fModeActive = true;
+		else
+			fModeActive = false;
+	} else if(drone_type=="m600") {
+		if(msg->axes[4] < -1000)
+			fModeActive = true;
+		else
+			fModeActive = false;
 	}
 }	
 
@@ -290,8 +274,8 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 	tf::StampedTransform baseTf;
 	try
 	{
-		tfListener->waitForTransform("world", "firefly/base_link", ros::Time(0), ros::Duration(.1));
-		tfListener->lookupTransform("world", "firefly/base_link", ros::Time(0), baseTf);
+		tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
+		tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
 	}
 	catch (tf::TransformException ex)
 	{
@@ -551,12 +535,12 @@ void navigateGoalCallback(){
 	x_ref = y_ref = z_ref = 1000;
 	bool achieved_x_, achieved_y_, achieved_z_, achieved_yaw_;
 	ros::Time start_time = ros::Time::now();
-    while ( (ros::Time::now().toSec() - start_time.toSec() < 20.0) && (fabs(x_ref)>=  arrived_th_xyz || fabs(y_ref) >=  arrived_th_xyz || fabs(z_ref) >=  arrived_th_xyz ) ) 
+    while ( (fabs(x_ref)>=  arrived_th_xyz || fabs(y_ref) >=  arrived_th_xyz || fabs(z_ref) >=  arrived_th_xyz ) ) 
 	{
 		try
 		{
-			tfListener->waitForTransform("world", "firefly/base_link", ros::Time(0), ros::Duration(.1));
-			tfListener->lookupTransform("world", "firefly/base_link", ros::Time(0), baseTf);
+			tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
+			tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
 		}
 		catch (tf::TransformException ex)
 		{
@@ -657,7 +641,9 @@ void navigateGoalCallback(){
 		}else{
 			sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
 		}	
+
 	}
+	sendSpeedReference(0.0, 0.0, 0.0, 0.0);
 }
 
 //Okey, this callback is reached when publishing over Navigate3D/cancel topic a empty message
@@ -705,7 +691,7 @@ void landingGoalCallback(){
 	}
 
 	landingResult.success = true;
-	landingResult.extra_info = "Landing Okay";
+	landingResult.extra_info = "Landing OK";
 
 	landingServer->setSucceeded(landingResult);
 	droneLanded=true;
@@ -873,11 +859,12 @@ int main (int argc, char** argv)
 	if(!nh.getParam("gazebo_sim", gazebo_sim)){
 		gazebo_sim=false;
 	}
-
+	fModeActive = gazebo_sim;
+	nh.param("global_frame_id", global_frame_id, static_cast<std::string>("world"));
 	if(!nh.getParam("drone_frame", droneFrame)){
 		droneFrame = "matrice";
-		ROS_WARN("Using default frame %s",droneFrame.c_str());
 	}
+	ROS_INFO("Using drone frame %s. Global frame: %s",droneFrame.c_str(), global_frame_id.c_str());
 	configMarker();
 	if(!nh.getParam("takeoff_height", takeoffHeight))
 		takeoffHeight = 3.0;
