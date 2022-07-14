@@ -1,7 +1,6 @@
 <launch>
     <arg name="gazebo_sim" default="false"/>
-    <arg name="global_frame_id" default="world" unless="$(arg gazebo_sim)"/>
-    <arg name="global_frame_id" default="map" if="$(arg gazebo_sim)"/>
+    <arg name="global_frame_id" default="world"/>
     <arg name="drone_frame_id" default="matrice" unless="$(arg gazebo_sim)"/>
     <arg name="drone_frame_id" default="firefly/base_link" if="$(arg gazebo_sim)"/>
 
@@ -13,14 +12,14 @@
     <node pkg="matrice_traj_tracker" type="matrice_marsupial_traj_tracker_node" name="matrice_marsupial_traj_tracker_node" output="screen">
     <!-- node parameters -->
         <param name="takeoff_height" type="double" value="3.0"/>
-        <param name="max_vx" type="double" value="0.5"/>
-        <param name="max_vy" type="double" value="0.5"/>
-        <param name="max_vz" type="double" value="0.4"/>
-        <param name="max_ry" type="double" value="0.5"/>
+        <param name="max_vx" type="double" value="0.4"/>
+        <param name="max_vy" type="double" value="0.4"/>
+        <param name="max_vz" type="double" value="0.3"/>
+        <param name="max_ry" type="double" value="0.3"/>
         <param name="min_vx" type="double" value="0.2"/>
         <param name="min_vy" type="double" value="0.2"/>
-        <param name="min_vz" type="double" value="0.2"/>
-        <param name="min_ry" type="double" value="0.2"/>
+        <param name="min_vz" type="double" value="0.1"/>
+        <param name="min_ry" type="double" value="0.15"/>
         <param name="watchdog_freq" type="double" value="7.0"/>
         <param name="testing" value="false" />
         <param name="gazebo_sim" value="$(arg gazebo_sim)" />
