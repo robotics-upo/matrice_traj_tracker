@@ -3,6 +3,7 @@
 #include <ros/node_handle.h>
 #include <sensor_msgs/Joy.h>
 #include <sensor_msgs/NavSatFix.h>
+#include <std_msgs/Bool.h>
 #include <std_msgs/UInt8.h>
 #include <std_msgs/Float32.h>
 #include <std_msgs/Float64.h>
@@ -74,6 +75,7 @@ ros::ServiceClient ctrl_authority_service,drone_task_service;
 visualization_msgs::Marker speedMarker,rotMarker;
 //Used to set the marker frame
 std::string droneFrame, global_frame_id;
+ros::Publisher fmode_pub;
 
 //For the watchdog
 ros::Time lastT, currentT;
@@ -213,6 +215,9 @@ void rc_callback(const sensor_msgs::Joy::ConstPtr &msg)
 		else
 			fModeActive = false;
 	}
+	std_msgs::Bool fmod_msg;
+	fmod_msg.data = fModeActive;
+	fmode_pub.publish(fmod_msg);
 }	
 
 // Drone flight status callback
@@ -852,14 +857,20 @@ int main (int argc, char** argv)
     landingServer->registerGoalCallback(boost::function<void()>(landingGoalCallback));
     landingServer->start();
 
+	// Fmode publisher
+	fmode_pub = nh.advertise<std_msgs::Bool>("fmode", 1, true);
+	
 	// Read node parameters
 	double takeoffHeight;
 	double watchdogFreq;
-	nh.param("drone_model", drone_type, (std::string)"m600");
+	nh.param("drone_model", drone_type, (std::string)"m210");
 	if(!nh.getParam("gazebo_sim", gazebo_sim)){
 		gazebo_sim=false;
 	}
 	fModeActive = gazebo_sim;
+	std_msgs::Bool msg;
+	msg.data = fModeActive;
+	fmode_pub.publish(msg);
 	nh.param("global_frame_id", global_frame_id, static_cast<std::string>("world"));
 	if(!nh.getParam("drone_frame", droneFrame)){
 		droneFrame = "matrice";
