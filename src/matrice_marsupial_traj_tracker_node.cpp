@@ -559,7 +559,11 @@ void navigateGoalCallback(){
 		tf::Vector3 tf_traslation_; 
 		tf_traslation_ = baseTf.getOrigin();
 
-		yaw_ref = yaw_goal - yaw;
+		yaw_ref = yaw_goal - yaw; // Beware of the distances more or less than M_PI
+		if (yaw_ref < -M_PI) 
+			yaw_ref += 2*M_PI;
+		else if (yaw_ref > M_PI)
+			yaw_ref -= 2*M_PI;
 		x_ref = local_goal_point.getX();
 		y_ref = local_goal_point.getY();
 		z_ref = local_goal_point.getZ();
