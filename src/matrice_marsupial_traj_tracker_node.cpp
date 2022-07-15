@@ -30,7 +30,7 @@ typedef actionlib::SimpleActionServer<upo_actions::Navigate3DAction> NavigationS
 typedef actionlib::SimpleActionServer<upo_actions::LandingAction> LandingServer;
 typedef actionlib::SimpleActionServer<upo_actions::TakeOffAction> TakeOffServer;
 
-#define FLOAT_SIGN(val) (val > 0.0) ? +1.0 : -1.0
+#define FLOAT_SIGN(val) (((val) > 0.0) ? +1.0 : -1.0)
 
 // Global variables
 bool fModeActive = false;
@@ -247,126 +247,126 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& msg)
 // Commanded robot trajectory
 void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::ConstPtr& msg)
 {
-	//cout << 1 << endl;
-	//Okey, if no goal active, forget about 
-	if(!navigationServer->isActive())
-		return;
+  //cout << 1 << endl;
+  //Okey, if no goal active, forget about 
+  if(!navigationServer->isActive())
+    return;
 
-	currentT=msg->header.stamp;
-	if(currentT-lastT > watchdofPeriod){
-		ROS_WARN("Input trajectory timeout...");
-		lastT=currentT;
-		sendSpeedReference(0, 0, 0, 0);
-		return;
-	}
-	lastT=currentT;
+  currentT=msg->header.stamp;
+  if(currentT-lastT > watchdofPeriod){
+    ROS_WARN("Input trajectory timeout...");
+    lastT=currentT;
+    sendSpeedReference(0, 0, 0, 0);
+    return;
+  }
+  lastT=currentT;
 
-	//cout << 2 << endl;
-	// Get the reference position and orientation
-	x_ref = msg->points[0].transforms[0].translation.x;
-	y_ref = msg->points[0].transforms[0].translation.y;
-	z_ref = msg->points[0].transforms[0].translation.z;
-	tf::Quaternion q(msg->points[0].transforms[0].rotation.x, 
-	                 msg->points[0].transforms[0].rotation.y, 
-	                 msg->points[0].transforms[0].rotation.z, 
-	                 msg->points[0].transforms[0].rotation.w);
-	double r, p, yaw, yaw_ref;
-	tf::Matrix3x3 m(q);
-	m.getRPY(r, p, yaw_ref);
+  //cout << 2 << endl;
+  // Get the reference position and orientation
+  x_ref = msg->points[0].transforms[0].translation.x;
+  y_ref = msg->points[0].transforms[0].translation.y;
+  z_ref = msg->points[0].transforms[0].translation.z;
+  tf::Quaternion q(msg->points[0].transforms[0].rotation.x, 
+		   msg->points[0].transforms[0].rotation.y, 
+		   msg->points[0].transforms[0].rotation.z, 
+		   msg->points[0].transforms[0].rotation.w);
+  double r, p, yaw, yaw_ref;
+  tf::Matrix3x3 m(q);
+  m.getRPY(r, p, yaw_ref);
 	
-	// PATCH to Fali's mess with orientation of final goal 
-	// REMOVE IN THE FUTURE!!!!!
-	tf::StampedTransform baseTf;
-	try
-	{
-		tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
-		tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
-	}
-	catch (tf::TransformException ex)
-	{
-		ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
-		return;
-	}
-	tf::Matrix3x3 m2(baseTf.getRotation());
-	m2.getRPY(r, p, yaw);
-	yaw_ref = goal_yaw-yaw;
+  // PATCH to Fali's mess with orientation of final goal 
+  // REMOVE IN THE FUTURE!!!!!
+  tf::StampedTransform baseTf;
+  try
+    {
+      tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
+      tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
+    }
+  catch (tf::TransformException ex)
+    {
+      ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
+      return;
+    }
+  tf::Matrix3x3 m2(baseTf.getRotation());
+  m2.getRPY(r, p, yaw);
+  yaw_ref = goal_yaw-yaw;
 
-	// Apply lower bound to the given refence only when last wayoint is used
-	if(msg->points.size() == 1)
-	{
-		if(fabs(x_ref) < arrived_th_xyz){
-			x_old=x_ref;
-			x_ref = 0.0;
-		}
-		if(fabs(y_ref) < arrived_th_xyz){
-			y_old=y_ref;
-			y_ref = 0.0;
-		}
-		if(fabs(z_ref) < arrived_th_xyz){
-			z_old=z_ref;
-			z_ref = 0.0;
-		}
-		if(fabs(yaw_ref) < arrived_th_yaw)
-			yaw_ref = 0.0;
+  // Apply lower bound to the given refence only when last wayoint is used
+  if(msg->points.size() == 1)
+    {
+      if(fabs(x_ref) < arrived_th_xyz){
+	x_old=x_ref;
+	x_ref = 0.0;
+      }
+      if(fabs(y_ref) < arrived_th_xyz){
+	y_old=y_ref;
+	y_ref = 0.0;
+      }
+      if(fabs(z_ref) < arrived_th_xyz){
+	z_old=z_ref;
+	z_ref = 0.0;
+      }
+      if(fabs(yaw_ref) < arrived_th_yaw)
+	yaw_ref = 0.0;
 
-			//It means that we reached the goal
-		if(x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
-			actionResult.arrived = true;
-			actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);
-			navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
-		}
-	}
-	else
-	{
-		yaw_ref = 0.0;
-	}
-	if(speed_ref_mode){
-	// Compute commmanded velocities
-		double vx, vy, vz, ry;
-		if(fabs(x_ref) > 1.0)
-			vx = max_vx*FLOAT_SIGN(x_ref);
-		else
-			vx = max_vx*x_ref;
-		if(fabs(y_ref) > 1.0)
-			vy = max_vy*FLOAT_SIGN(y_ref);
-		else
-			vy = max_vy*y_ref;
-		if(fabs(z_ref) > 1.0)
-			vz = max_vz*FLOAT_SIGN(z_ref);
-		else
-			vz = max_vz*z_ref;
-		if(fabs(yaw_ref) > 1.0)
-			ry = max_ry*FLOAT_SIGN(yaw_ref);
-		else
-			ry = max_ry*yaw_ref;
-		if(msg->points.size() == 1)
-		{
-			vx = control_factor*vx;
-			vy = control_factor*vy;
-			vz = control_factor*vz;
-			ry = control_factor*ry;
-		}
-		// Command the computed velocities
-		sendSpeedReference(vx, vy, vz, ry);
-		actionFb.speed.linear.x = vx;
-		actionFb.speed.linear.y = vy;
-		actionFb.speed.linear.z = vz;
-		actionFb.speed.angular.z = ry;
-		//TODO: Fill dist2Goal feedback field, not important right now
-		navigationServer->publishFeedback(actionFb);
+      //It means that we reached the goal
+      if(x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
+	actionResult.arrived = true;
+	actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);
+	navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
+      }
+    }
+  else
+    {
+      yaw_ref = 0.0;
+    }
+  if(speed_ref_mode){
+    // Compute commmanded velocities
+    double vx, vy, vz, ry;
+    if(fabs(x_ref) > 1.0)
+      vx = max_vx*FLOAT_SIGN(x_ref);
+    else
+      vx = max_vx*x_ref;
+    if(fabs(y_ref) > 1.0)
+      vy = max_vy*FLOAT_SIGN(y_ref);
+    else
+      vy = max_vy*y_ref;
+    if(fabs(z_ref) > 1.0)
+      vz = max_vz*FLOAT_SIGN(z_ref);
+    else
+      vz = max_vz*z_ref;
+    if(fabs(yaw_ref) > 1.0)
+      ry = max_ry*FLOAT_SIGN(yaw_ref);
+    else
+      ry = max_ry*yaw_ref;
+    if(msg->points.size() == 1)
+      {
+	vx = control_factor*vx;
+	vy = control_factor*vy;
+	vz = control_factor*vz;
+	ry = control_factor*ry;
+      }
+    // Command the computed velocities
+    sendSpeedReference(vx, vy, vz, ry);
+    actionFb.speed.linear.x = vx;
+    actionFb.speed.linear.y = vy;
+    actionFb.speed.linear.z = vz;
+    actionFb.speed.angular.z = ry;
+    //TODO: Fill dist2Goal feedback field, not important right now
+    navigationServer->publishFeedback(actionFb);
 
-		//Publish markers
-		speedMarker.points[1].x = vx;
-		speedMarker.points[1].y = vy;
-		speedMarker.points[1].z = vz;
+    //Publish markers
+    speedMarker.points[1].x = vx;
+    speedMarker.points[1].y = vy;
+    speedMarker.points[1].z = vz;
 
-		rotMarker.scale.x = ry;
+    rotMarker.scale.x = ry;
 
-		speedMarkerPub.publish(speedMarker);
-		speedMarkerPub.publish(rotMarker);
-	}else{
-		sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
-	}	
+    speedMarkerPub.publish(speedMarker);
+    speedMarkerPub.publish(rotMarker);
+  }else{
+    sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
+  }	
 }
 
 // Perform a monitored takeoff 
@@ -539,7 +539,7 @@ void navigateGoalCallback(){
 
   bool achieved_x_ = false, achieved_y_ = false, achieved_z_ = false, achieved_yaw_ = false;
   ros::Time start_time = ros::Time::now();
-  while ( !(achieved_x_ && achieved_y_ && achieved_yaw_ && achieved_z_)  ) 
+  while ( !(achieved_x_ && achieved_y_ && achieved_yaw_ && achieved_z_) && ros::ok()) 
     {
       try
 	{
@@ -566,8 +566,6 @@ void navigateGoalCallback(){
       x_ref = local_goal_point.getX();
       y_ref = local_goal_point.getY();
       z_ref = local_goal_point.getZ();
-      printf("error[%f %f %f / %f] \r"
-	     ,x_ref,y_ref,z_ref,yaw_ref);
 
       achieved_x_ = achieved_y_ = achieved_z_ = achieved_yaw_ = false;
       if(fabs(x_ref) < arrived_th_xyz)
@@ -582,14 +580,31 @@ void navigateGoalCallback(){
       if(speed_ref_mode){
 	// Compute commmanded velocitiesx_ref
 	double vx, vy, vz, ry;
-	if (!achieved_yaw_)
-	  ry = max_ry * FLOAT_SIGN(yaw_ref);
-	if(!achieved_x_) 
+	vx = vy = vz = ry = 0.0;
+
+	if(fabs(x_ref) > 1.0)
 	  vx = max_vx * FLOAT_SIGN(x_ref);
-	if(!achieved_y_)
+	else
+	  vx = (max_vx - min_vx) * x_ref + min_vx * FLOAT_SIGN(x_ref);
+	if(fabs(y_ref) > 1.0)
 	  vy = max_vy * FLOAT_SIGN(y_ref);
-	if(!achieved_z_)
+	else
+	  vy = (max_vy - min_vy) * y_ref + min_vy * FLOAT_SIGN(y_ref);
+	if(fabs(z_ref) > 1.0)
 	  vz = max_vz * FLOAT_SIGN(z_ref);
+	else
+	  vz = (max_vz - min_vz) * z_ref + min_vz * FLOAT_SIGN(z_ref);
+	if(fabs(yaw_ref) > 1.0)
+	  ry = max_ry*FLOAT_SIGN(yaw_ref);
+	else
+	  ry = max_ry*yaw_ref;
+
+	printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]",
+	       x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
+	printf("\tSpeeds: [%.2f-%.2f %.2f-%.2f %.2f-%.2f/ %.2f-%.2f]            \r",
+	       min_vx, max_vx, min_vy, max_vy,
+	       min_vz, max_vz, min_ry, max_ry);
+
 
 	// Command the computed velocities
 	sendSpeedReference(vx, vy, vz, ry);
@@ -601,8 +616,8 @@ void navigateGoalCallback(){
 	navigationServer->publishFeedback(actionFb);
 
 	//Publish markers
-	speedMarker.points[1].x = vx;
-	speedMarker.points[1].y = vy;
+	speedMarker.points[1].x = vx * cos(yaw) - vx *sin(yaw);
+	speedMarker.points[1].y = vy * cos(yaw) + vx *sin(yaw);
 	speedMarker.points[1].z = vz;
 
 	rotMarker.scale.x = ry;
@@ -624,278 +639,278 @@ void navigateGoalCallback(){
 //Okey, this callback is reached when publishing over Navigate3D/cancel topic a empty message
 void navigatePreemptCallback(){
 
-	actionResult.arrived = false;
-	actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);//TODO: Put the real one
-	navigationServer->setPreempted(actionResult,"3D Navigation Goal Preempted Call received");
+  actionResult.arrived = false;
+  actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);//TODO: Put the real one
+  navigationServer->setPreempted(actionResult,"3D Navigation Goal Preempted Call received");
 }
 
 void landingGoalCallback(){
 
-	landingGoal = landingServer->acceptNewGoal();
+  landingGoal = landingServer->acceptNewGoal();
 
-	if(droneLanded){
-		std::string error_msg = "Not possible to land, drone already landed";
-		ROS_ERROR("Error %s", error_msg.c_str());
-		landingResult.success=false;
-		landingResult.extra_info=error_msg;
-		landingServer->setAborted(landingResult);
-		return;
-	}
-	if(!fModeActive){
-		std::string error_msg = "Drone is not in F-Mode, aborting landing";
-		ROS_ERROR("Error %s", error_msg.c_str());
-		landingResult.success=false;
-		landingResult.extra_info=error_msg;
+  if(droneLanded){
+    std::string error_msg = "Not possible to land, drone already landed";
+    ROS_ERROR("Error %s", error_msg.c_str());
+    landingResult.success=false;
+    landingResult.extra_info=error_msg;
+    landingServer->setAborted(landingResult);
+    return;
+  }
+  if(!fModeActive){
+    std::string error_msg = "Drone is not in F-Mode, aborting landing";
+    ROS_ERROR("Error %s", error_msg.c_str());
+    landingResult.success=false;
+    landingResult.extra_info=error_msg;
 
-		landingServer->setAborted(landingResult);
-		return;
-	}
-	ROS_INFO("Requesting landing...");
-	dji_sdk::DroneTaskControl droneTaskControl;
-	droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_LAND;
-	drone_task_service.call(droneTaskControl);
+    landingServer->setAborted(landingResult);
+    return;
+  }
+  ROS_INFO("Requesting landing...");
+  dji_sdk::DroneTaskControl droneTaskControl;
+  droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_LAND;
+  drone_task_service.call(droneTaskControl);
 
-	if(!droneTaskControl.response.result)
-	{
-		std::string error_msg {"Drone task control bad response"};
-		ROS_ERROR("Error %s", error_msg.c_str());
-		landingResult.success=false;
-		landingResult.extra_info=error_msg;
-		landingServer->setAborted(landingResult);
-		return;
-	}
+  if(!droneTaskControl.response.result)
+    {
+      std::string error_msg {"Drone task control bad response"};
+      ROS_ERROR("Error %s", error_msg.c_str());
+      landingResult.success=false;
+      landingResult.extra_info=error_msg;
+      landingServer->setAborted(landingResult);
+      return;
+    }
 
-	landingResult.success = true;
-	landingResult.extra_info = "Landing OK";
+  landingResult.success = true;
+  landingResult.extra_info = "Landing OK";
 
-	landingServer->setSucceeded(landingResult);
-	droneLanded=true;
-	ROS_INFO("Drone Landed");
+  landingServer->setSucceeded(landingResult);
+  droneLanded=true;
+  ROS_INFO("Drone Landed");
 	
 }
 
 void takeOffGoalCallback(){
 
-	takeOffGoal = takeOffServer->acceptNewGoal();
+  takeOffGoal = takeOffServer->acceptNewGoal();
 
-	if(!droneLanded)
-	{
-		std::string error_msg = "Take off done before";
-		ROS_ERROR("Error %s", error_msg.c_str());
-		takeOffResult.success=false;
-		takeOffResult.extra_info=error_msg;
-		takeOffServer->setAborted(takeOffResult);
-		return;
-	}
-	// Get takeoff altitude
-	ROS_INFO("Checking takeoff altitude ...");
-	while(takeOffGoal->takeoff_height.data < -10000.0)
-	{
-		ros::Duration(0.01).sleep();
-		ros::spinOnce();
-	} 
-	landingHeight = height; 
-	ROS_INFO("\tdone!");
+  if(!droneLanded)
+    {
+      std::string error_msg = "Take off done before";
+      ROS_ERROR("Error %s", error_msg.c_str());
+      takeOffResult.success=false;
+      takeOffResult.extra_info=error_msg;
+      takeOffServer->setAborted(takeOffResult);
+      return;
+    }
+  // Get takeoff altitude
+  ROS_INFO("Checking takeoff altitude ...");
+  while(takeOffGoal->takeoff_height.data < -10000.0)
+    {
+      ros::Duration(0.01).sleep();
+      ros::spinOnce();
+    } 
+  landingHeight = height; 
+  ROS_INFO("\tdone!");
 
-	// Check the drone is in F-Mode before starting
-	ROS_INFO("Checking drone is in F-Mode ...");
+  // Check the drone is in F-Mode before starting
+  ROS_INFO("Checking drone is in F-Mode ...");
 
-	while(!fModeActive)
-	{
-		ros::Duration(0.01).sleep();
-		ros::spinOnce();
-	}  
-	ROS_INFO("\tdone!");
+  while(!fModeActive)
+    {
+      ros::Duration(0.01).sleep();
+      ros::spinOnce();
+    }  
+  ROS_INFO("\tdone!");
 
-	// Get control authority
-	ROS_INFO("Getting control authority ...");
-	dji_sdk::SDKControlAuthority authority;
-	authority.request.control_enable=1;
-	ctrl_authority_service.call(authority);
-	if(!authority.response.result && (!gazebo_sim))
-	{
-		std::string error_msg {"impossible to obtain drone control!"};
-		ROS_ERROR("Error %s", error_msg.c_str());
+  // Get control authority
+  ROS_INFO("Getting control authority ...");
+  dji_sdk::SDKControlAuthority authority;
+  authority.request.control_enable=1;
+  ctrl_authority_service.call(authority);
+  if(!authority.response.result && (!gazebo_sim))
+    {
+      std::string error_msg {"impossible to obtain drone control!"};
+      ROS_ERROR("Error %s", error_msg.c_str());
 
-		takeOffResult.success=false;
-		takeOffResult.extra_info=error_msg;
-		takeOffServer->setAborted(takeOffResult);
-		return;
-	}
+      takeOffResult.success=false;
+      takeOffResult.extra_info=error_msg;
+      takeOffServer->setAborted(takeOffResult);
+      return;
+    }
 	
-	ROS_INFO("\tdone!");
+  ROS_INFO("\tdone!");
 
-    // Perform automatic take-off
-    ROS_INFO("Taking-off ...");
-	dji_sdk::DroneTaskControl droneTaskControl;
+  // Perform automatic take-off
+  ROS_INFO("Taking-off ...");
+  dji_sdk::DroneTaskControl droneTaskControl;
 	
-	droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_TAKEOFF;
+  droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_TAKEOFF;
 		
-	drone_task_service.call(droneTaskControl);
-	if(!droneTaskControl.response.result && (!gazebo_sim))
-	{
-		std::string error_msg {"Drone task control bad response"};
-		ROS_ERROR("Error %s", error_msg.c_str());
-		takeOffResult.success=false;
-		takeOffResult.extra_info=error_msg;
-		takeOffServer->setAborted(takeOffResult);
-		return;
-	}
+  drone_task_service.call(droneTaskControl);
+  if(!droneTaskControl.response.result && (!gazebo_sim))
+    {
+      std::string error_msg {"Drone task control bad response"};
+      ROS_ERROR("Error %s", error_msg.c_str());
+      takeOffResult.success=false;
+      takeOffResult.extra_info=error_msg;
+      takeOffServer->setAborted(takeOffResult);
+      return;
+    }
 	
-	init_height = height;
-	if(!monitoredTakeoff()){
-		std::string error_msg {"Monitored takeoff error"};
-		ROS_ERROR("Error %s", error_msg.c_str());
-		takeOffResult.success=false;
-		takeOffResult.extra_info=error_msg;
-		takeOffServer->setAborted(takeOffResult);
-		return;
-	}
-	ROS_INFO("\tdone!");
+  init_height = height;
+  if(!monitoredTakeoff()){
+    std::string error_msg {"Monitored takeoff error"};
+    ROS_ERROR("Error %s", error_msg.c_str());
+    takeOffResult.success=false;
+    takeOffResult.extra_info=error_msg;
+    takeOffServer->setAborted(takeOffResult);
+    return;
+  }
+  ROS_INFO("\tdone!");
 
-	// Fly up until reaching the takeoff altitude
-	ROS_INFO("Climbing to takeoff height ...");
-	while((height-landingHeight)-takeOffGoal->takeoff_height.data < 0)
-	{
-		takeOffFb.percent_achieved.data = (height-landingHeight)-takeOffGoal->takeoff_height.data;
-		takeOffServer->publishFeedback(takeOffFb);
-		sendSpeedReference(0.0, 0.0, max_vz, 0.0);
-		ros::spinOnce();
-		ros::Duration(0.01).sleep();
-	}  
-	sendSpeedReference(0.0, 0.0, 0.0, 0.0);
-	ros::spinOnce();
-	ROS_INFO("\tdone!");
-	takeOffResult.success=true;
-	takeOffResult.extra_info="TakeOff Done";
+  // Fly up until reaching the takeoff altitude
+  ROS_INFO("Climbing to takeoff height ...");
+  while((height-landingHeight)-takeOffGoal->takeoff_height.data < 0)
+    {
+      takeOffFb.percent_achieved.data = (height-landingHeight)-takeOffGoal->takeoff_height.data;
+      takeOffServer->publishFeedback(takeOffFb);
+      sendSpeedReference(0.0, 0.0, max_vz, 0.0);
+      ros::spinOnce();
+      ros::Duration(0.01).sleep();
+    }  
+  sendSpeedReference(0.0, 0.0, 0.0, 0.0);
+  ros::spinOnce();
+  ROS_INFO("\tdone!");
+  takeOffResult.success=true;
+  takeOffResult.extra_info="TakeOff Done";
 	
 
-	/*sendRelPoseReference(0.0, 0.0, takeOffGoal->takeoff_height.data, 0.0);
-	ros::spinOnce();
-	while(fabs((height-landingHeight)-takeOffGoal->takeoff_height.data) < 0.3)
-	{
-		ros::spinOnce();
-		ros::Duration(0.01).sleep();
-	} 
-	ROS_INFO("\tdone!");
-	takeOffResult.success=true;
-	takeOffResult.extra_info="TakeOff Done";
-*/
-	takeOffServer->setSucceeded(takeOffResult);
-	droneLanded = false;
+  /*sendRelPoseReference(0.0, 0.0, takeOffGoal->takeoff_height.data, 0.0);
+    ros::spinOnce();
+    while(fabs((height-landingHeight)-takeOffGoal->takeoff_height.data) < 0.3)
+    {
+    ros::spinOnce();
+    ros::Duration(0.01).sleep();
+    } 
+    ROS_INFO("\tdone!");
+    takeOffResult.success=true;
+    takeOffResult.extra_info="TakeOff Done";
+  */
+  takeOffServer->setSucceeded(takeOffResult);
+  droneLanded = false;
 }
 
 int main (int argc, char** argv)
 {
-	ros::init (argc, argv, "matrice_traj_tracker_node");
-	ros::NodeHandle nh("~");	
+  ros::init (argc, argv, "matrice_traj_tracker_node");
+  ros::NodeHandle nh("~");	
 	
-	//Publish speed arrow marker
-	speedMarkerPub = nh.advertise<visualization_msgs::Marker>("speedMarker", 2);
-	// Create rc subscriber and control publisher
-	ros::Subscriber rcSub = nh.subscribe<sensor_msgs::Joy>("/dji_sdk/rc", 1, &rc_callback);
-	ros::Subscriber flightStatusSub = nh.subscribe("/dji_sdk/flight_status", 1, &flight_status_callback);
-	ros::Subscriber displayModeSub = nh.subscribe("/dji_sdk/display_mode", 1, &display_mode_callback);
-	ros::Subscriber gps = nh.subscribe("/dji_sdk/gps_position", 1, &gps_callback);
-	ros::Subscriber trajectorySub = nh.subscribe("/input_trajectory", 1, &input_trajectory_callback);
-	ros::Subscriber cmd_roll_pitch_yawrate_thrust_sub_ = nh.subscribe("/firefly/command/motor_speed", 1, &MotorSpeedCallback);
+  //Publish speed arrow marker
+  speedMarkerPub = nh.advertise<visualization_msgs::Marker>("speedMarker", 2);
+  // Create rc subscriber and control publisher
+  ros::Subscriber rcSub = nh.subscribe<sensor_msgs::Joy>("/dji_sdk/rc", 1, &rc_callback);
+  ros::Subscriber flightStatusSub = nh.subscribe("/dji_sdk/flight_status", 1, &flight_status_callback);
+  ros::Subscriber displayModeSub = nh.subscribe("/dji_sdk/display_mode", 1, &display_mode_callback);
+  ros::Subscriber gps = nh.subscribe("/dji_sdk/gps_position", 1, &gps_callback);
+  ros::Subscriber trajectorySub = nh.subscribe("/input_trajectory", 1, &input_trajectory_callback);
+  ros::Subscriber cmd_roll_pitch_yawrate_thrust_sub_ = nh.subscribe("/firefly/command/motor_speed", 1, &MotorSpeedCallback);
 
 
-	controlPub = nh.advertise<sensor_msgs::Joy>("/dji_sdk/flight_control_setpoint_generic", 0);    
-	heightAboveTakeoffPub = nh.advertise<std_msgs::Float64>("/height_above_takeoff", 0);
+  controlPub = nh.advertise<sensor_msgs::Joy>("/dji_sdk/flight_control_setpoint_generic", 0);    
+  heightAboveTakeoffPub = nh.advertise<std_msgs::Float64>("/height_above_takeoff", 0);
 	
-	// Start TF listener
-	tfListener = new tf::TransformListener;
+  // Start TF listener
+  tfListener = new tf::TransformListener;
 
-	// Required services
-	ctrl_authority_service = nh.serviceClient<dji_sdk::SDKControlAuthority> ("/dji_sdk/sdk_control_authority");
-	drone_task_service = nh.serviceClient<dji_sdk::DroneTaskControl>("/dji_sdk/drone_task_control");
+  // Required services
+  ctrl_authority_service = nh.serviceClient<dji_sdk::SDKControlAuthority> ("/dji_sdk/sdk_control_authority");
+  drone_task_service = nh.serviceClient<dji_sdk::DroneTaskControl>("/dji_sdk/drone_task_control");
 
-	//Start action server to communicate with local planner
-	navigationServer.reset(new NavigationServer(nh,"/UAVNavigation3D",false));
-    navigationServer->registerGoalCallback(boost::function<void()>(navigateGoalCallback));
-    navigationServer->registerPreemptCallback(boost::function<void()>(navigatePreemptCallback));
-    navigationServer->start();
+  //Start action server to communicate with local planner
+  navigationServer.reset(new NavigationServer(nh,"/UAVNavigation3D",false));
+  navigationServer->registerGoalCallback(boost::function<void()>(navigateGoalCallback));
+  navigationServer->registerPreemptCallback(boost::function<void()>(navigatePreemptCallback));
+  navigationServer->start();
 
-	//Start action server to receive takeoff requests
-	takeOffServer.reset(new TakeOffServer(nh,"/TakeOff",false));
-    takeOffServer->registerGoalCallback(boost::function<void()>(takeOffGoalCallback));
-    takeOffServer->start();
+  //Start action server to receive takeoff requests
+  takeOffServer.reset(new TakeOffServer(nh,"/TakeOff",false));
+  takeOffServer->registerGoalCallback(boost::function<void()>(takeOffGoalCallback));
+  takeOffServer->start();
 
-	//Start action server to receive landing commands
-	landingServer.reset(new LandingServer(nh,"/Landing",false));
-    landingServer->registerGoalCallback(boost::function<void()>(landingGoalCallback));
-    landingServer->start();
+  //Start action server to receive landing commands
+  landingServer.reset(new LandingServer(nh,"/Landing",false));
+  landingServer->registerGoalCallback(boost::function<void()>(landingGoalCallback));
+  landingServer->start();
 
-	// Fmode publisher
-	fmode_pub = nh.advertise<std_msgs::Bool>("fmode", 1, true);
+  // Fmode publisher
+  fmode_pub = nh.advertise<std_msgs::Bool>("fmode", 1, true);
 	
-	// Read node parameters
-	double takeoffHeight;
-	double watchdogFreq;
-	nh.param("drone_model", drone_type, (std::string)"m210");
-	if(!nh.getParam("gazebo_sim", gazebo_sim)){
-		gazebo_sim=false;
-	}
-	fModeActive = gazebo_sim;
-	std_msgs::Bool msg;
-	msg.data = fModeActive;
-	fmode_pub.publish(msg);
-	nh.param("global_frame_id", global_frame_id, static_cast<std::string>("world"));
-	if(!nh.getParam("drone_frame", droneFrame)){
-		droneFrame = "matrice";
-	}
-	ROS_INFO("Using drone frame %s. Global frame: %s",droneFrame.c_str(), global_frame_id.c_str());
-	configMarker();
-	if(!nh.getParam("takeoff_height", takeoffHeight))
-		takeoffHeight = 3.0;
-	if(takeoffHeight < 2.0 || takeoffHeight > 10.0)
-	{
-		ROS_INFO("takeoff_height must be in range 2.0 to 10.0, setting to 3.0");
-		takeoffHeight = 3.0;
-	}	
-	if(!nh.getParam("max_vx", max_vx))
-		max_vx = 1.0;
-	if(!nh.getParam("max_vy", max_vy))
-		max_vy = 1.0;	
-	if(!nh.getParam("max_vz", max_vz))
-		max_vz = 0.5;
-	if(!nh.getParam("max_ry", max_ry))
-		max_ry = 0.2;
-	if(!nh.getParam("min_vx", min_vx))
-		min_vx = 0.5;
-	if(!nh.getParam("min_vy", min_vy))
-		min_vy = 0.5;	
-	if(!nh.getParam("min_vz", min_vz))
-		min_vz = 0.5;
-	if(!nh.getParam("min_ry", min_ry))
-		min_ry = 0.25;
-	if(!nh.getParam("watchdog_freq", watchdogFreq))
-		watchdogFreq = 5.0;
-	nh.param("arrived_th_xyz", arrived_th_xyz, 0.25);
-	nh.param("arrived_th_yaw", arrived_th_yaw, 0.2);
-	nh.param("control_factor", control_factor, 0.2);
-	nh.param("speed_reference_mode", speed_ref_mode, false);
-
-	watchdofPeriod = ros::Duration(1/watchdogFreq);
-
-	// Spin forever
-	ros::spin();
-	
-    /* Send commands at 10 hz
-    ros::Rate r(10);
-    vx = 0.0, vy = 0.0, vz = 0.0, ry = 0.0;
-    while(!endProgram)
+  // Read node parameters
+  double takeoffHeight;
+  double watchdogFreq;
+  nh.param("drone_model", drone_type, (std::string)"m210");
+  if(!nh.getParam("gazebo_sim", gazebo_sim)){
+    gazebo_sim=false;
+  }
+  fModeActive = gazebo_sim;
+  std_msgs::Bool msg;
+  msg.data = fModeActive;
+  fmode_pub.publish(msg);
+  nh.param("global_frame_id", global_frame_id, static_cast<std::string>("world"));
+  if(!nh.getParam("drone_frame", droneFrame)){
+    droneFrame = "matrice";
+  }
+  ROS_INFO("Using drone frame %s. Global frame: %s",droneFrame.c_str(), global_frame_id.c_str());
+  configMarker();
+  if(!nh.getParam("takeoff_height", takeoffHeight))
+    takeoffHeight = 3.0;
+  if(takeoffHeight < 2.0 || takeoffHeight > 10.0)
     {
-		
-		
-		// Reset velocities
-		vx = 0.0, vy = 0.0, vz = 0.0, ry = 0.0;
-		
-		// Ros spin and sleep
-		ros::spinOnce();
-		r.sleep();
-	}*/
+      ROS_INFO("takeoff_height must be in range 2.0 to 10.0, setting to 3.0");
+      takeoffHeight = 3.0;
+    }	
+  if(!nh.getParam("max_vx", max_vx))
+    max_vx = 1.0;
+  if(!nh.getParam("max_vy", max_vy))
+    max_vy = 1.0;	
+  if(!nh.getParam("max_vz", max_vz))
+    max_vz = 0.5;
+  if(!nh.getParam("max_ry", max_ry))
+    max_ry = 0.2;
+  if(!nh.getParam("min_vx", min_vx))
+    min_vx = 0.5;
+  if(!nh.getParam("min_vy", min_vy))
+    min_vy = 0.5;	
+  if(!nh.getParam("min_vz", min_vz))
+    min_vz = 0.5;
+  if(!nh.getParam("min_ry", min_ry))
+    min_ry = 0.25;
+  if(!nh.getParam("watchdog_freq", watchdogFreq))
+    watchdogFreq = 5.0;
+  nh.param("arrived_th_xyz", arrived_th_xyz, 0.25);
+  nh.param("arrived_th_yaw", arrived_th_yaw, 0.2);
+  nh.param("control_factor", control_factor, 0.2);
+  nh.param("speed_reference_mode", speed_ref_mode, false);
+
+  watchdofPeriod = ros::Duration(1/watchdogFreq);
+
+  // Spin forever
+  ros::spin();
 	
-	return 0;
+  /* Send commands at 10 hz
+     ros::Rate r(10);
+     vx = 0.0, vy = 0.0, vz = 0.0, ry = 0.0;
+     while(!endProgram)
+     {
+		
+		
+     // Reset velocities
+     vx = 0.0, vy = 0.0, vz = 0.0, ry = 0.0;
+		
+     // Ros spin and sleep
+     ros::spinOnce();
+     r.sleep();
+     }*/
+	
+  return 0;
 }
