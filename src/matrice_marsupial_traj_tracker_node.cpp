@@ -504,148 +504,121 @@ bool monitoredTakeoff(void)
 }
 
 void navigateGoalCallback(){
+  if(droneLanded){
+    ROS_ERROR("Not possible to navigate, take off first");
+    return;
+  }
+  else{
+    ROS_INFO("Matrice_traj_tracker_node: Receiving new goal to navigate");
+  }
+  //TODO: Okey if a new goal is while we are navigating to another goal it means that the trajectory has been re-calculated. So what to do?
+  actionGoal = navigationServer->acceptNewGoal();
+  //As it you don't refuse the first trajectory
+  currentT = ros::Time::now();
 
-	if(droneLanded){
-		ROS_ERROR("Not possible to navigate, take off first");
-		return;
-	}
-	else{
-		ROS_INFO("Matrice_traj_tracker_node: Receiving new goal to navigate");
-	}
-	//TODO: Okey if a new goal is while we are navigating to another goal it means that the trajectory has been re-calculated. So what to do?
-	actionGoal = navigationServer->acceptNewGoal();
-	//As it you don't refuse the first trajectory
-	currentT = ros::Time::now();
+  // Get yaw from goal
+  tf::Quaternion q(actionGoal->global_goal.pose.orientation.x, 
+		   actionGoal->global_goal.pose.orientation.y, 
+		   actionGoal->global_goal.pose.orientation.z, 
+		   actionGoal->global_goal.pose.orientation.w);
+  double r, p, yaw, yaw_ref, yaw_goal;
 
-	// Get yaw from goal
-	tf::Quaternion q(actionGoal->global_goal.pose.orientation.x, 
-	                 actionGoal->global_goal.pose.orientation.y, 
-	                 actionGoal->global_goal.pose.orientation.z, 
-	                 actionGoal->global_goal.pose.orientation.w);
-	double r, p, yaw, yaw_ref, yaw_goal;
+  tf::Matrix3x3 m(q);
+  m.getRPY(r, p, yaw_goal);
 
-	tf::Matrix3x3 m(q);
-	m.getRPY(r, p, yaw_goal);
+  tf::StampedTransform baseTf;
+  tf::Stamped<tf::Point> global_goal_point, local_goal_point;
+  global_goal_point.frame_id_ = global_frame_id;
+  global_goal_point.setX(actionGoal->global_goal.pose.position.x);
+  global_goal_point.setY(actionGoal->global_goal.pose.position.y);
+  global_goal_point.setZ(actionGoal->global_goal.pose.position.z);
 
-	tf::StampedTransform baseTf;
-	tf::Stamped<tf::Point> global_goal_point, local_goal_point;
-	global_goal_point.frame_id_ = global_frame_id;
-	global_goal_point.setX(actionGoal->global_goal.pose.position.x);
-	global_goal_point.setY(actionGoal->global_goal.pose.position.y);
-	global_goal_point.setZ(actionGoal->global_goal.pose.position.z);
+  ROS_INFO("Matrice_traj_tracker_node:	goal=[%f %f %f / %f]", global_goal_point.getX(),
+	   global_goal_point.getY(),
+	   global_goal_point.getZ(), yaw_goal);
 
-	ROS_INFO("Matrice_traj_tracker_node:	goal=[%f %f %f / %f]", global_goal_point.getX(),
-																	global_goal_point.getY(),
-																	global_goal_point.getZ(), yaw_goal);
-
-	bool achieved_x_ = false, achieved_y_ = false, achieved_z_ = false, achieved_yaw_ = false;
-	ros::Time start_time = ros::Time::now();
-    while ( !(achieved_x_ && achieved_y_ && achieved_yaw_ && achieved_z_)  ) 
+  bool achieved_x_ = false, achieved_y_ = false, achieved_z_ = false, achieved_yaw_ = false;
+  ros::Time start_time = ros::Time::now();
+  while ( !(achieved_x_ && achieved_y_ && achieved_yaw_ && achieved_z_)  ) 
+    {
+      try
 	{
-		try
-		{
-			tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
-			tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
-			tfListener->transformPoint(droneFrame, ros::Time(0), global_goal_point, global_frame_id, local_goal_point);
-		}
-		catch (tf::TransformException ex)
-		{
-			ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
-			return;
-		}
-		tf::Matrix3x3 m2(baseTf.getRotation());
-		m2.getRPY(r, p, yaw);
-		
-		tf::Vector3 tf_traslation_; 
-		tf_traslation_ = baseTf.getOrigin();
-
-		yaw_ref = yaw_goal - yaw;
-		x_ref = local_goal_point.getX();
-		y_ref = local_goal_point.getY();
-		z_ref = local_goal_point.getZ();
-		printf("error[%f %f %f / %f] \r"
-		,x_ref,y_ref,z_ref,yaw_ref);
-
-		achieved_x_ = achieved_y_ = achieved_z_ = achieved_yaw_ = false;
-		if(fabs(x_ref) < arrived_th_xyz)
-			achieved_x_ = true;
-		if(fabs(y_ref) < arrived_th_xyz)
-			achieved_y_ = true;
-		if(fabs(z_ref) < arrived_th_xyz)
-			achieved_z_ = true;
-		if(fabs(yaw_ref) < arrived_th_yaw)
-			achieved_yaw_ = true;
-
-		if(speed_ref_mode){
-		// Compute commmanded velocitiesx_ref
-			double vx, vy, vz, ry;
-			
-			// printf("Entro 2 !!!!!\n");
-			if(!achieved_yaw_){
-				if 	(yaw_ref > 0.0)
-					ry = max_ry;
-				else 
-					ry = -1.0* max_ry;
-			}else
-					ry = 0;
-
-			if (achieved_yaw_){
-				// printf("Entro 3 !!!!!\n");
-				
-				ry = 0.0;
-
-				if(!achieved_x_){
-					if 	(x_ref > 0.0)
-						vx = max_vx;
-					else 
-						vx = -1.0 * max_vx;
-				}else
-					vx = 0;
-				if(!achieved_y_){
-					if 	(y_ref > 0.0)
-						vy = max_vy;
-					else 
-						vy = -1.0* max_vy;
-				}else
-					vy = 0;
-				if(!achieved_z_){
-					if 	(z_ref > 0.0)
-						vz = max_vz;
-					else 
-						vz = -1.0 * max_vz;
-				}else
-					vz = 0;
-			}
-
-			// Command the computed velocities
-			sendSpeedReference(vx, vy, vz, ry);
-			actionFb.speed.linear.x = vx;
-			actionFb.speed.linear.y = vy;
-			actionFb.speed.linear.z = vz;
-			actionFb.speed.angular.z = ry;
-			//TODO: Fill dist2Goal feedback field, not important right now
-			navigationServer->publishFeedback(actionFb);
-
-			//Publish markers
-			speedMarker.points[1].x = vx;
-			speedMarker.points[1].y = vy;
-			speedMarker.points[1].z = vz;
-
-			rotMarker.scale.x = ry;
-
-			speedMarkerPub.publish(speedMarker);
-			speedMarkerPub.publish(rotMarker);
-		}else{
-			ROS_ERROR("Relative pose control not allowed");
-			// sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
-		}	
-
+	  tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
+	  tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
+	  tfListener->transformPoint(droneFrame, ros::Time(0), global_goal_point, global_frame_id, local_goal_point);
 	}
-	ROS_INFO("Matrice_traj_tracker_node: Achieved Goal!!!");
-	actionResult.arrived = true;
-	actionResult.finalDist.data = sqrt(z_ref*z_ref+y_ref*y_ref+x_ref*x_ref);
-	navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
-	sendSpeedReference(0.0, 0.0, 0.0, 0.0);
+      catch (tf::TransformException ex)
+	{
+	  ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
+	  return;
+	}
+      tf::Matrix3x3 m2(baseTf.getRotation());
+      m2.getRPY(r, p, yaw);
+		
+      tf::Vector3 tf_traslation_; 
+      tf_traslation_ = baseTf.getOrigin();
+
+      yaw_ref = yaw_goal - yaw;
+      x_ref = local_goal_point.getX();
+      y_ref = local_goal_point.getY();
+      z_ref = local_goal_point.getZ();
+      printf("error[%f %f %f / %f] \r"
+	     ,x_ref,y_ref,z_ref,yaw_ref);
+
+      achieved_x_ = achieved_y_ = achieved_z_ = achieved_yaw_ = false;
+      if(fabs(x_ref) < arrived_th_xyz)
+	achieved_x_ = true;
+      if(fabs(y_ref) < arrived_th_xyz)
+	achieved_y_ = true;
+      if(fabs(z_ref) < arrived_th_xyz)
+	achieved_z_ = true;
+      if(fabs(yaw_ref) < arrived_th_yaw)
+	achieved_yaw_ = true;
+
+      if(speed_ref_mode){
+	// Compute commmanded velocitiesx_ref
+	double vx, vy, vz, ry;
+	vx = vy = vz = ry = 0.0;
+			
+	if (!achieved_yaw_)
+	  ry = max_ry * FLOAT_SIGN(yaw_ref);
+	if(!achieved_x_) 
+	  vx = max_vx * FLOAT_SIGN(x_ref);
+	if(!achieved_y_)
+	  vy = max_vy * FLOAT_SIGN(y_ref);
+
+	if(!achieved_z_)
+	  vz = max_vz * FLOAT_SIGN(z_ref);
+
+	// Command the computed velocities
+	sendSpeedReference(vx, vy, vz, ry);
+	actionFb.speed.linear.x = vx;
+	actionFb.speed.linear.y = vy;
+	actionFb.speed.linear.z = vz;
+	actionFb.speed.angular.z = ry;
+	//TODO: Fill dist2Goal feedback field, not important right now
+	navigationServer->publishFeedback(actionFb);
+
+	//Publish markers
+	speedMarker.points[1].x = vx;
+	speedMarker.points[1].y = vy;
+	speedMarker.points[1].z = vz;
+
+	rotMarker.scale.x = ry;
+
+	speedMarkerPub.publish(speedMarker);
+	speedMarkerPub.publish(rotMarker);
+      } else {
+	ROS_ERROR("Relative pose control implemented yet");
+	// sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
+      }	
+
+    }
+  ROS_INFO("Matrice_traj_tracker_node: Achieved Goal!!!");
+  actionResult.arrived = true;
+  actionResult.finalDist.data = sqrt(z_ref*z_ref+y_ref*y_ref+x_ref*x_ref);
+  navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
+  sendSpeedReference(0.0, 0.0, 0.0, 0.0);
 }
 
 //Okey, this callback is reached when publishing over Navigate3D/cancel topic a empty message
