@@ -558,7 +558,11 @@ void navigateGoalCallback(){
       tf::Vector3 tf_traslation_; 
       tf_traslation_ = baseTf.getOrigin();
 
-      yaw_ref = yaw_goal - yaw;
+      yaw_ref = yaw_goal - yaw; // Beware of the distances more or less than M_PI
+      if (yaw_ref < -M_PI) 
+	yaw_ref += 2*M_PI;
+      else if (yaw_ref > M_PI)
+	yaw_ref -= 2*M_PI;
       x_ref = local_goal_point.getX();
       y_ref = local_goal_point.getY();
       z_ref = local_goal_point.getZ();
@@ -578,15 +582,12 @@ void navigateGoalCallback(){
       if(speed_ref_mode){
 	// Compute commmanded velocitiesx_ref
 	double vx, vy, vz, ry;
-	vx = vy = vz = ry = 0.0;
-			
 	if (!achieved_yaw_)
 	  ry = max_ry * FLOAT_SIGN(yaw_ref);
 	if(!achieved_x_) 
 	  vx = max_vx * FLOAT_SIGN(x_ref);
 	if(!achieved_y_)
 	  vy = max_vy * FLOAT_SIGN(y_ref);
-
 	if(!achieved_z_)
 	  vz = max_vz * FLOAT_SIGN(z_ref);
 
@@ -612,7 +613,6 @@ void navigateGoalCallback(){
 	ROS_ERROR("Relative pose control implemented yet");
 	// sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
       }	
-
     }
   ROS_INFO("Matrice_traj_tracker_node: Achieved Goal!!!");
   actionResult.arrived = true;
