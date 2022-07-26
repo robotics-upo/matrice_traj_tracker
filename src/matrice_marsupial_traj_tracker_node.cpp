@@ -40,7 +40,7 @@ uint8_t flight_status = 255;
 uint8_t display_mode  = 255;
 double height = -100000.0, landingHeight = -100000.0;
 ros::Publisher controlPub, speedMarkerPub, heightAboveTakeoffPub;
-double x_ref, y_ref, z_ref, yaw_ref;
+double x_ref, y_ref, xy_ref, z_ref, yaw_ref;
 double control_factor, arrived_th_xyz, arrived_th_yaw;
 tf::TransformListener *tfListener;
 double goal_yaw;
@@ -537,9 +537,9 @@ void navigateGoalCallback(){
 	   global_goal_point.getY(),
 	   global_goal_point.getZ(), yaw_goal);
 
-  bool achieved_x_ = false, achieved_y_ = false, achieved_z_ = false, achieved_yaw_ = false;
+  bool achieved_xy_ = false, achieved_z_ = false, achieved_yaw_ = false;
   ros::Time start_time = ros::Time::now();
-  while ( !(achieved_x_ && achieved_y_ && achieved_yaw_ && achieved_z_) && ros::ok()) 
+  while ( !(achieved_xy_ && achieved_yaw_ && achieved_z_) && ros::ok()) 
     {
       try
 	{
@@ -565,31 +565,24 @@ void navigateGoalCallback(){
 	yaw_ref -= 2*M_PI;
       x_ref = local_goal_point.getX();
       y_ref = local_goal_point.getY();
+      xy_ref = std::sqrt(pow(x_ref, 2.0) + pow(y_ref, 2.0));
       z_ref = local_goal_point.getZ();
+      float sin_ang = y_ref / xy_ref;
+      float cos_ang = x_ref / xy_ref;
 
-      achieved_x_ = achieved_y_ = achieved_z_ = achieved_yaw_ = false;
-      if(fabs(x_ref) < arrived_th_xyz)
-	achieved_x_ = true;
-      if(fabs(y_ref) < arrived_th_xyz)
-	achieved_y_ = true;
-      if(fabs(z_ref) < arrived_th_xyz)
-	achieved_z_ = true;
-      if(fabs(yaw_ref) < arrived_th_yaw)
-	achieved_yaw_ = true;
-
+      achieved_xy_ = fabs(xy_ref) < arrived_th_xyz;
+      achieved_z_ = fabs(z_ref) < arrived_th_xyz;
+      achieved_yaw_ = fabs(yaw_ref) < arrived_th_yaw;
+		
       if(speed_ref_mode){
 	// Compute commmanded velocitiesx_ref
-	double vx, vy, vz, ry;
-	vx = vy = vz = ry = 0.0;
+	double vx, vy, vxy, vz, ry;
+	vxy = vz = ry = 0.0;
 
-	if(fabs(x_ref) > 1.0)
-	  vx = max_vx * FLOAT_SIGN(x_ref);
+	if(fabs(xy_ref) > 1.0)
+	  vxy = max_vx;
 	else
-	  vx = (max_vx - min_vx) * x_ref + min_vx * FLOAT_SIGN(x_ref);
-	if(fabs(y_ref) > 1.0)
-	  vy = max_vy * FLOAT_SIGN(y_ref);
-	else
-	  vy = (max_vy - min_vy) * y_ref + min_vy * FLOAT_SIGN(y_ref);
+	  vxy = (max_vx - min_vx) * xy_ref + min_vx;
 	if(fabs(z_ref) > 1.0)
 	  vz = max_vz * FLOAT_SIGN(z_ref);
 	else
@@ -599,12 +592,14 @@ void navigateGoalCallback(){
 	else
 	  ry = max_ry*yaw_ref;
 
+	vx = cos_ang * vxy;
+	vy = sin_ang * vxy;
+	
 	printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]",
 	       x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
 	printf("\tSpeeds: [%.2f-%.2f %.2f-%.2f %.2f-%.2f/ %.2f-%.2f]            \r",
 	       min_vx, max_vx, min_vy, max_vy,
 	       min_vz, max_vz, min_ry, max_ry);
-
 
 	// Command the computed velocities
 	sendSpeedReference(vx, vy, vz, ry);
