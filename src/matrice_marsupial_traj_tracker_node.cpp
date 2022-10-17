@@ -511,16 +511,18 @@ void navigateGoalCallback(){
   else{
     ROS_INFO("Matrice_traj_tracker_node: Receiving new goal to navigate");
   }
+
   //TODO: Okey if a new goal is while we are navigating to another goal it means that the trajectory has been re-calculated. So what to do?
   actionGoal = navigationServer->acceptNewGoal();
+  
   //As it you don't refuse the first trajectory
   currentT = ros::Time::now();
 
   // Get yaw from goal
   tf::Quaternion q(actionGoal->global_goal.pose.orientation.x, 
-		   actionGoal->global_goal.pose.orientation.y, 
-		   actionGoal->global_goal.pose.orientation.z, 
-		   actionGoal->global_goal.pose.orientation.w);
+        actionGoal->global_goal.pose.orientation.y, 
+        actionGoal->global_goal.pose.orientation.z, 
+        actionGoal->global_goal.pose.orientation.w);
   double r, p, yaw, yaw_ref, yaw_goal;
 
   tf::Matrix3x3 m(q);
@@ -534,96 +536,101 @@ void navigateGoalCallback(){
   global_goal_point.setZ(actionGoal->global_goal.pose.position.z);
 
   ROS_INFO("Matrice_traj_tracker_node:	goal=[%f %f %f / %f]", global_goal_point.getX(),
-	   global_goal_point.getY(),
-	   global_goal_point.getZ(), yaw_goal);
+      global_goal_point.getY(),
+      global_goal_point.getZ(), yaw_goal);
 
   bool achieved_xy_ = false, achieved_z_ = false, achieved_yaw_ = false;
-  ros::Time start_time = ros::Time::now();
-  while ( !(achieved_xy_ && achieved_yaw_ && achieved_z_) && ros::ok()) 
+  while ( !(achieved_xy_ && achieved_yaw_ && achieved_z_) && ros::ok()) {
+    
+    // Get latest robot position
+    try
     {
-      try
-	{
-	  tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
-	  tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
-	  tfListener->transformPoint(droneFrame, ros::Time(0), global_goal_point, global_frame_id, local_goal_point);
-	}
-      catch (tf::TransformException ex)
-	{
-	  ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
-	  return;
-	}
-      tf::Matrix3x3 m2(baseTf.getRotation());
-      m2.getRPY(r, p, yaw);
-		
-      tf::Vector3 tf_traslation_; 
-      tf_traslation_ = baseTf.getOrigin();
-
-      yaw_ref = yaw_goal - yaw; // Beware of the distances more or less than M_PI
-      if (yaw_ref < -M_PI) 
-	yaw_ref += 2*M_PI;
-      else if (yaw_ref > M_PI)
-	yaw_ref -= 2*M_PI;
-      x_ref = local_goal_point.getX();
-      y_ref = local_goal_point.getY();
-      xy_ref = std::sqrt(pow(x_ref, 2.0) + pow(y_ref, 2.0));
-      z_ref = local_goal_point.getZ();
-      float sin_ang = y_ref / xy_ref;
-      float cos_ang = x_ref / xy_ref;
-
-      achieved_xy_ = fabs(xy_ref) < arrived_th_xyz;
-      achieved_z_ = fabs(z_ref) < arrived_th_xyz;
-      achieved_yaw_ = fabs(yaw_ref) < arrived_th_yaw;
-		
-      if(speed_ref_mode){
-	// Compute commmanded velocitiesx_ref
-	double vx, vy, vxy, vz, ry;
-	vxy = vz = ry = 0.0;
-
-	if(fabs(xy_ref) > 1.0)
-	  vxy = max_vx;
-	else
-	  vxy = (max_vx - min_vx) * xy_ref + min_vx;
-	if(fabs(z_ref) > 1.0)
-	  vz = max_vz * FLOAT_SIGN(z_ref);
-	else
-	  vz = (max_vz - min_vz) * z_ref + min_vz * FLOAT_SIGN(z_ref);
-	if(fabs(yaw_ref) > 1.0)
-	  ry = max_ry*FLOAT_SIGN(yaw_ref);
-	else
-	  ry = max_ry*yaw_ref;
-
-	vx = cos_ang * vxy;
-	vy = sin_ang * vxy;
-	
-	printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]",
-	       x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
-	printf("\tSpeeds: [%.2f-%.2f %.2f-%.2f %.2f-%.2f/ %.2f-%.2f]            \r",
-	       min_vx, max_vx, min_vy, max_vy,
-	       min_vz, max_vz, min_ry, max_ry);
-
-	// Command the computed velocities
-	sendSpeedReference(vx, vy, vz, ry);
-	actionFb.speed.linear.x = vx;
-	actionFb.speed.linear.y = vy;
-	actionFb.speed.linear.z = vz;
-	actionFb.speed.angular.z = ry;
-	//TODO: Fill dist2Goal feedback field, not important right now
-	navigationServer->publishFeedback(actionFb);
-
-	//Publish markers
-	speedMarker.points[1].x = vx * cos(yaw) - vx *sin(yaw);
-	speedMarker.points[1].y = vy * cos(yaw) + vx *sin(yaw);
-	speedMarker.points[1].z = vz;
-
-	rotMarker.scale.x = ry;
-
-	speedMarkerPub.publish(speedMarker);
-	speedMarkerPub.publish(rotMarker);
-      } else {
-	ROS_ERROR("Relative pose control implemented yet");
-	// sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
-      }	
+      tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
+      tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
+      tfListener->transformPoint(droneFrame, ros::Time(0), global_goal_point, global_frame_id, local_goal_point);
     }
+    catch (tf::TransformException ex)
+    {
+      ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
+      return;
+    }
+    tf::Matrix3x3 m2(baseTf.getRotation());
+    m2.getRPY(r, p, yaw);
+
+    tf::Vector3 tf_traslation_; 
+    tf_traslation_ = baseTf.getOrigin();
+
+    yaw_ref = yaw_goal - yaw; // Beware of the distances more or less than M_PI
+    if (yaw_ref < -M_PI) 
+      yaw_ref += 2*M_PI;
+    else if (yaw_ref > M_PI)
+      yaw_ref -= 2*M_PI;
+    x_ref = local_goal_point.getX();
+    y_ref = local_goal_point.getY();
+    xy_ref = std::sqrt(pow(x_ref, 2.0) + pow(y_ref, 2.0));
+    z_ref = local_goal_point.getZ();
+    float sin_ang = y_ref / xy_ref;
+    float cos_ang = x_ref / xy_ref;
+
+    achieved_xy_ = fabs(xy_ref) < arrived_th_xyz;
+    achieved_z_ = fabs(z_ref) < arrived_th_xyz;
+    achieved_yaw_ = fabs(yaw_ref) < arrived_th_yaw;
+      
+    if(speed_ref_mode){
+      // Compute commmanded velocitiesx_ref
+      double vx, vy, vxy, vz, ry;
+      vxy = vz = ry = 0.0;
+
+      if(fabs(xy_ref) > 1.0)
+        vxy = max_vx;
+      else
+        vxy = (max_vx - min_vx) * xy_ref + min_vx;
+      if(fabs(z_ref) > 1.0)
+        vz = max_vz * FLOAT_SIGN(z_ref);
+      else
+        vz = (max_vz - min_vz) * z_ref + min_vz * FLOAT_SIGN(z_ref);
+      if(fabs(yaw_ref) > 1.0)
+        ry = max_ry*FLOAT_SIGN(yaw_ref);
+      else
+        ry = max_ry*yaw_ref;
+
+      vx = cos_ang * vxy;
+      vy = sin_ang * vxy;
+
+      printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]",
+              x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
+      printf("\tSpeeds: [%.2f-%.2f %.2f-%.2f %.2f-%.2f/ %.2f-%.2f]            \r",
+              min_vx, max_vx, min_vy, max_vy,
+              min_vz, max_vz, min_ry, max_ry);
+
+      // Command the computed velocities
+      sendSpeedReference(vx, vy, vz, ry);
+      actionFb.speed.linear.x = vx;
+      actionFb.speed.linear.y = vy;
+      actionFb.speed.linear.z = vz;
+      actionFb.speed.angular.z = ry;
+      //TODO: Fill dist2Goal feedback field, not important right now
+      navigationServer->publishFeedback(actionFb);
+
+      //Publish markers
+      speedMarker.points[1].x = vx * cos(yaw) - vx *sin(yaw);
+      speedMarker.points[1].y = vy * cos(yaw) + vx *sin(yaw);
+      speedMarker.points[1].z = vz;
+
+      rotMarker.scale.x = ry;
+
+      speedMarkerPub.publish(speedMarker);
+      speedMarkerPub.publish(rotMarker);
+    } 
+    else {
+      ROS_ERROR("Relative pose control implemented yet");
+      // sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
+    }	
+      
+    // Update sensing info
+    ros::Duration(0.01).sleep();
+    ros::spinOnce();
+  }
   ROS_INFO("Matrice_traj_tracker_node: Achieved Goal!!!");
   actionResult.arrived = true;
   actionResult.finalDist.data = sqrt(z_ref*z_ref+y_ref*y_ref+x_ref*x_ref);
