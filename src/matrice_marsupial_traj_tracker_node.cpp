@@ -3,6 +3,9 @@
 #include <ros/node_handle.h>
 #include <sensor_msgs/Joy.h>
 #include <sensor_msgs/NavSatFix.h>
+#include <sensor_msgs/Imu.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/point_cloud2_iterator.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/UInt8.h>
 #include <std_msgs/Float32.h>
@@ -13,6 +16,8 @@
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_listener.h>
+#include <pcl_ros/transforms.h>
+#include <pcl/point_types.h>
 
 #include <upo_actions/Navigate3DAction.h>
 #include <upo_actions/LandingAction.h>
@@ -52,6 +57,11 @@ double x_old, y_old, z_old;
 bool refUpdated = false;
 double max_vx, max_vy, max_vz, max_ry;
 double min_vx, min_vy, min_vz, min_ry;
+
+// Used for obstacle avoidance
+double roll, pitch, yaw;
+std::vector<pcl::PointXYZ> obstacles;
+double square_area_size, square_area_height, inflation_radious;
 
 //Upo actions stuff
 //Navigation server
@@ -125,6 +135,94 @@ void configMarker(){
     rotMarker.color.g = 0.0;
     rotMarker.color.r = 1.0;
 
+}
+
+  //! IMU callback
+void imuCallback(const sensor_msgs::Imu::ConstPtr& msg) 
+{
+  double r = roll;
+  double p = pitch;
+  double y = yaw;
+  auto o = msg->orientation;
+  tf::Quaternion q;
+  tf::quaternionMsgToTF(o, q);
+  tf::Matrix3x3 M(q);
+  M.getRPY(roll, pitch, yaw);
+  if (isnan(roll) || isnan(pitch) || isnan(yaw)) {
+    roll = r;
+    pitch = p;
+    yaw = y;
+  }
+}
+
+// 3D point-cloud callback
+void pointcloudCallback(const sensor_msgs::PointCloud2ConstPtr& cloud)
+{	
+  static bool tfCache = false;
+  static tf::StampedTransform pclTf;
+
+  // Pre-cache transform for point-cloud to base frame and transform the pc
+  if(!tfCache)
+  {	
+    try
+    {
+      tfListener->waitForTransform(droneFrame, cloud->header.frame_id, ros::Time(0), ros::Duration(2.0));
+      tfListener->lookupTransform(droneFrame, cloud->header.frame_id, ros::Time(0), pclTf);
+      tfCache = true;
+    }
+    catch (tf::TransformException ex)
+    {
+      ROS_ERROR("%s",ex.what());
+      return;
+    }
+  }
+
+  // Transform cloud to base frame
+  sensor_msgs::PointCloud2 baseCloud;
+  pcl_ros::transformPointCloud(droneFrame, pclTf, *cloud, baseCloud);
+  
+  // PointCloud2 to PointXYZ conversion, with range limits and downsampling
+  double min_range = 0.5;
+  double max_range = square_area_size / 2.0;
+  std::vector<pcl::PointXYZ> downCloud;
+  sensor_msgs::PointCloud2Iterator<float> iterX(baseCloud, "x");
+  sensor_msgs::PointCloud2Iterator<float> iterY(baseCloud, "y");
+  sensor_msgs::PointCloud2Iterator<float> iterZ(baseCloud, "z");
+  downCloud.clear();
+  for(int i=0; i<baseCloud.width*baseCloud.height; i++, ++iterX, ++iterY, ++iterZ) 
+  {
+    pcl::PointXYZ p(*iterX, *iterY, *iterZ);
+    float d2 = p.x*p.x + p.y*p.y + p.z*p.z;
+    if(d2 > min_range && d2 < max_range)
+      downCloud.push_back(p);			
+  }
+
+  // Tilt-compensate point-cloud according to roll and pitch
+  std::vector<pcl::PointXYZ> points;
+  float cr, sr, cp, sp, cy, sy, rx, ry;
+  float r00, r01, r02, r10, r11, r12, r20, r21, r22;
+  sr = sin(roll);
+  cr = cos(roll);
+  sp = sin(pitch);
+  cp = cos(pitch);
+  r00 = cp; 	r01 = sp*sr; 	r02 = cr*sp;
+  r10 =  0; 	r11 = cr;		r12 = -sr;
+  r20 = -sp;	r21 = cp*sr;	r22 = cp*cr;
+  points.resize(downCloud.size());
+  for(size_t i=0; i<downCloud.size(); i++) 
+  {
+    float x = downCloud[i].x, y = downCloud[i].y, z = downCloud[i].z;
+    points[i].x = x*r00 + y*r01 + z*r02;
+    points[i].y = x*r10 + y*r11 + z*r12;
+    points[i].z = x*r20 + y*r21 + z*r22;			
+  }
+
+  // Filter obstacles into the required height
+  double h = square_area_height/2.0;
+  obstacles.clear();
+  for(size_t i=0; i<points.size(); i++) 
+    if(fabs(points[i].z) < h)
+      obstacles.push_back(points[i]);
 }
 
 void sendSpeedReference(float vx, float vy, float vz, float ry)
@@ -816,7 +914,9 @@ int main (int argc, char** argv)
   ros::Subscriber gps = nh.subscribe("/dji_sdk/gps_position", 1, &gps_callback);
   ros::Subscriber trajectorySub = nh.subscribe("/input_trajectory", 1, &input_trajectory_callback);
   ros::Subscriber cmd_roll_pitch_yawrate_thrust_sub_ = nh.subscribe("/firefly/command/motor_speed", 1, &MotorSpeedCallback);
-
+  ros::Subscriber	pcSub = nh.subscribe("/cloud", 1, &pointcloudCallback);
+  roll = pitch = yaw = 0;
+  ros::Subscriber	imuSub = nh.subscribe("/imu", 1, &imuCallback);
 
   controlPub = nh.advertise<sensor_msgs::Joy>("/dji_sdk/flight_control_setpoint_generic", 0);    
   heightAboveTakeoffPub = nh.advertise<std_msgs::Float64>("/height_above_takeoff", 0);
