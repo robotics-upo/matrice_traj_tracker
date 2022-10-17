@@ -29,6 +29,8 @@
 //Necessary for use of rotors_simulator
 #include <mav_msgs/Actuators.h>
 
+#include "df2d.hpp" // 2D Distance grid
+
 
 using namespace std;
 typedef actionlib::SimpleActionServer<upo_actions::Navigate3DAction> NavigationServer;
@@ -59,9 +61,12 @@ double max_vx, max_vy, max_vz, max_ry;
 double min_vx, min_vy, min_vz, min_ry;
 
 // Used for obstacle avoidance
+bool avoidObstacles;
 double roll, pitch, yaw;
 std::vector<pcl::PointXYZ> obstacles;
 double square_area_size, square_area_height, inflation_radious;
+double angle_samples, vel_samples, time_samples, time_horizon;
+DF2D grid2d;
 
 //Upo actions stuff
 //Navigation server
@@ -182,8 +187,8 @@ void pointcloudCallback(const sensor_msgs::PointCloud2ConstPtr& cloud)
   pcl_ros::transformPointCloud(droneFrame, pclTf, *cloud, baseCloud);
   
   // PointCloud2 to PointXYZ conversion, with range limits and downsampling
-  double min_range = 0.5;
-  double max_range = square_area_size / 2.0;
+  double min_range = 0.5*0.5;
+  double max_range = square_area_size*square_area_size / 4.0;
   std::vector<pcl::PointXYZ> downCloud;
   sensor_msgs::PointCloud2Iterator<float> iterX(baseCloud, "x");
   sensor_msgs::PointCloud2Iterator<float> iterY(baseCloud, "y");
@@ -695,11 +700,61 @@ void navigateGoalCallback(){
       vx = cos_ang * vxy;
       vy = sin_ang * vxy;
 
+/*
       printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]",
               x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
       printf("\tSpeeds: [%.2f-%.2f %.2f-%.2f %.2f-%.2f/ %.2f-%.2f]            \r",
               min_vx, max_vx, min_vy, max_vy,
               min_vz, max_vz, min_ry, max_ry);
+*/
+      // Compute the best reference according to the trayectory roll out
+      if(avoidObstacles)
+      {
+        // Update distance grid
+        grid2d.loadCloud(obstacles);
+
+        // Sample vector velocities
+        std::vector<Point2D> validVels;
+        double a_inc = 2*M_PI/angle_samples;
+        double v_inc = (max_vx-min_vx)/vel_samples;
+        double t_inc = time_horizon/time_samples;
+        for(double a = -M_PI; a<M_PI+0.1; a+=a_inc)
+        {
+          // Unit velocity vector
+          double ux = cos(a);
+          double uy = sin(a);
+
+          // Sample this unit vector for the different velocities
+          for(double v = min_vx; v<max_vx+0.01; v+=v_inc)
+          {
+            // Sample this velocity vector all along the trajectory
+            bool freeObstacles = true;
+            for(double t=0; t<time_horizon+0.01; t+=t_inc)
+              if(grid2d.getDist(ux*v*t, uy*v*t) < inflation_radious)
+                freeObstacles = false;
+            if(freeObstacles)
+              validVels.push_back(Point2D(ux*v, uy*v));
+          }
+        }
+
+        // Get the valid velocity that move the robot closest to the reference
+        double mind2 = 1000000000000;
+        Point2D bestVel = Point2D(0.0, 0.0);
+        for(size_t i=0; i<validVels.size(); i++)
+        {
+          double d2 = (validVels[i].x-x_ref)*(validVels[i].x-x_ref) + (validVels[i].y-y_ref)*(validVels[i].y-y_ref);
+          if(d2<mind2)
+          {
+            mind2 = d2;
+            bestVel = validVels[i];
+          }
+        }
+        vx = bestVel.x;
+        vy = bestVel.y;
+      }
+
+      printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]",
+              x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
 
       // Command the computed velocities
       sendSpeedReference(vx, vy, vz, ry);
@@ -748,12 +803,10 @@ void landingGoalCallback(){
 
   landingGoal = landingServer->acceptNewGoal();
 
-  if(droneLanded){
-    std::string error_msg = "Not possible to land, drone already landed";
-    ROS_ERROR("Error %s", error_msg.c_str());
-    landingResult.success=false;
-    landingResult.extra_info=error_msg;
-    landingServer->setAborted(landingResult);
+  if(droneLanded){ // If already landed, do nothing
+    landingResult.success = true;
+    landingResult.extra_info = "Landing OK";
+    landingServer->setSucceeded(landingResult);
     return;
   }
   if(!fModeActive){
@@ -793,15 +846,14 @@ void takeOffGoalCallback(){
 
   takeOffGoal = takeOffServer->acceptNewGoal();
 
-  if(!droneLanded)
+  if(!droneLanded) // Do nothing if drone already tock-off
     {
-      std::string error_msg = "Take off done before";
-      ROS_ERROR("Error %s", error_msg.c_str());
-      takeOffResult.success=false;
-      takeOffResult.extra_info=error_msg;
-      takeOffServer->setAborted(takeOffResult);
+      takeOffResult.success=true;
+      takeOffResult.extra_info="TakeOff Done";
+      takeOffServer->setSucceeded(takeOffResult);
       return;
     }
+
   // Get takeoff altitude
   ROS_INFO("Checking takeoff altitude ...");
   while(takeOffGoal->takeoff_height.data < -10000.0)
@@ -914,9 +966,6 @@ int main (int argc, char** argv)
   ros::Subscriber gps = nh.subscribe("/dji_sdk/gps_position", 1, &gps_callback);
   ros::Subscriber trajectorySub = nh.subscribe("/input_trajectory", 1, &input_trajectory_callback);
   ros::Subscriber cmd_roll_pitch_yawrate_thrust_sub_ = nh.subscribe("/firefly/command/motor_speed", 1, &MotorSpeedCallback);
-  ros::Subscriber	pcSub = nh.subscribe("/cloud", 1, &pointcloudCallback);
-  roll = pitch = yaw = 0;
-  ros::Subscriber	imuSub = nh.subscribe("/imu", 1, &imuCallback);
 
   controlPub = nh.advertise<sensor_msgs::Joy>("/dji_sdk/flight_control_setpoint_generic", 0);    
   heightAboveTakeoffPub = nh.advertise<std_msgs::Float64>("/height_above_takeoff", 0);
@@ -948,7 +997,6 @@ int main (int argc, char** argv)
   fmode_pub = nh.advertise<std_msgs::Bool>("fmode", 1, true);
 	
   // Read node parameters
-  double takeoffHeight;
   double watchdogFreq;
   nh.param("drone_model", drone_type, (std::string)"m210");
   if(!nh.getParam("gazebo_sim", gazebo_sim)){
@@ -964,13 +1012,6 @@ int main (int argc, char** argv)
   }
   ROS_INFO("Using drone frame %s. Global frame: %s",droneFrame.c_str(), global_frame_id.c_str());
   configMarker();
-  if(!nh.getParam("takeoff_height", takeoffHeight))
-    takeoffHeight = 3.0;
-  if(takeoffHeight < 2.0 || takeoffHeight > 10.0)
-    {
-      ROS_INFO("takeoff_height must be in range 2.0 to 10.0, setting to 3.0");
-      takeoffHeight = 3.0;
-    }	
   if(!nh.getParam("max_vx", max_vx))
     max_vx = 1.0;
   if(!nh.getParam("max_vy", max_vy))
@@ -993,6 +1034,25 @@ int main (int argc, char** argv)
   nh.param("arrived_th_yaw", arrived_th_yaw, 0.2);
   nh.param("control_factor", control_factor, 0.2);
   nh.param("speed_reference_mode", speed_ref_mode, false);
+
+  // Obstacle avoidance stuff
+  nh.param("avoid_obstacles", avoidObstacles, false);
+  nh.param("square_area_size", square_area_size, 6.0);
+  nh.param("square_area_height", square_area_height, 3.0);
+  nh.param("inflation_radious", inflation_radious, 2.0);
+  nh.param("angle_samples", angle_samples, 40.0);
+  nh.param("velocity_samples", vel_samples, 4.0);
+  nh.param("time_samples", time_samples, 10.0);
+  nh.param("time_horizon", time_horizon, 10.0);
+
+  if(avoidObstacles)
+  {
+    roll = pitch = yaw = 0;
+    obstacles.clear();
+    grid2d.setup(-square_area_size/2.0, square_area_size/2.0, -square_area_size/2.0, square_area_size/2.0, 0.05);
+    ros::Subscriber	pcSub = nh.subscribe("/cloud", 1, &pointcloudCallback);
+    ros::Subscriber	imuSub = nh.subscribe("/imu", 1, &imuCallback);
+  }
 
   watchdofPeriod = ros::Duration(1/watchdogFreq);
 
