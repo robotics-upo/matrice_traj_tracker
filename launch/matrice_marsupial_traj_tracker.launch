@@ -1,8 +1,10 @@
 <launch>
+    <arg name="uav_name" default="x500" /> 
+
     <arg name="gazebo_sim" default="false"/>
     <arg name="global_frame_id" default="world"/>
     <arg name="drone_frame_id" default="base_link" unless="$(arg gazebo_sim)"/>
-    <arg name="drone_frame_id" default="firefly/base_link" if="$(arg gazebo_sim)"/>
+    <arg name="drone_frame_id" default="$(arg uav_name)/base_link" if="$(arg gazebo_sim)"/>
 
 
     <arg name="arrived_th_xyz" default="0.25"/>
@@ -32,8 +34,8 @@
         <param name="arrived_th_xyz" value="$(arg arrived_th_xyz)"/>
         <param name="arrived_th_yaw" value="$(arg arrived_th_yaw)"/>
 
-        <remap from="/dji_sdk/rc" to="/firefly/joy" if="$(arg gazebo_sim)"/>
-        <remap from="/dji_sdk/gps_position" to="/firefly/gps" if="$(arg gazebo_sim)"/>
+        <remap from="/dji_sdk/rc" to="/joy_$(arg uav_name)" if="$(arg gazebo_sim)"/>
+        <remap from="/dji_sdk/gps_position" to="/$(arg uav_name)/gps" if="$(arg gazebo_sim)"/>
     </node>
 
 </launch>

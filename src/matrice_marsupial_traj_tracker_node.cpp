@@ -82,6 +82,7 @@ ros::Time lastT, currentT;
 ros::Duration watchdofPeriod;
 bool gazebo_sim=false;
 bool speed_ref_mode = false;
+
 void configMarker(){
 
 	geometry_msgs::Point p1,p2;
@@ -542,16 +543,16 @@ void navigateGoalCallback(){
   while ( !(achieved_x_ && achieved_y_ && achieved_yaw_ && achieved_z_) && ros::ok()) 
     {
       try
-	{
-	  tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
-	  tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
-	  tfListener->transformPoint(droneFrame, ros::Time(0), global_goal_point, global_frame_id, local_goal_point);
-	}
+      {
+        tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
+        tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
+        tfListener->transformPoint(droneFrame, ros::Time(0), global_goal_point, global_frame_id, local_goal_point);
+      }
       catch (tf::TransformException ex)
-	{
-	  ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
-	  return;
-	}
+      {
+        ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
+        return;
+      }
       tf::Matrix3x3 m2(baseTf.getRotation());
       m2.getRPY(r, p, yaw);
 		
@@ -560,73 +561,73 @@ void navigateGoalCallback(){
 
       yaw_ref = yaw_goal - yaw; // Beware of the distances more or less than M_PI
       if (yaw_ref < -M_PI) 
-	yaw_ref += 2*M_PI;
+	      yaw_ref += 2*M_PI;
       else if (yaw_ref > M_PI)
-	yaw_ref -= 2*M_PI;
+	      yaw_ref -= 2*M_PI;
       x_ref = local_goal_point.getX();
       y_ref = local_goal_point.getY();
       z_ref = local_goal_point.getZ();
 
       achieved_x_ = achieved_y_ = achieved_z_ = achieved_yaw_ = false;
       if(fabs(x_ref) < arrived_th_xyz)
-	achieved_x_ = true;
+	      achieved_x_ = true;
       if(fabs(y_ref) < arrived_th_xyz)
-	achieved_y_ = true;
+	      achieved_y_ = true;
       if(fabs(z_ref) < arrived_th_xyz)
-	achieved_z_ = true;
+	      achieved_z_ = true;
       if(fabs(yaw_ref) < arrived_th_yaw)
-	achieved_yaw_ = true;
+	      achieved_yaw_ = true;
 
       if(speed_ref_mode){
-	// Compute commmanded velocitiesx_ref
-	double vx, vy, vz, ry;
-	vx = vy = vz = ry = 0.0;
+        // Compute commmanded velocitiesx_ref
+        double vx, vy, vz, ry;
+        vx = vy = vz = ry = 0.0;
 
-	if(fabs(x_ref) > 1.0)
-	  vx = max_vx * FLOAT_SIGN(x_ref);
-	else
-	  vx = (max_vx - min_vx) * x_ref + min_vx * FLOAT_SIGN(x_ref);
-	if(fabs(y_ref) > 1.0)
-	  vy = max_vy * FLOAT_SIGN(y_ref);
-	else
-	  vy = (max_vy - min_vy) * y_ref + min_vy * FLOAT_SIGN(y_ref);
-	if(fabs(z_ref) > 1.0)
-	  vz = max_vz * FLOAT_SIGN(z_ref);
-	else
-	  vz = (max_vz - min_vz) * z_ref + min_vz * FLOAT_SIGN(z_ref);
-	if(fabs(yaw_ref) > 1.0)
-	  ry = max_ry*FLOAT_SIGN(yaw_ref);
-	else
-	  ry = max_ry*yaw_ref;
+        if(fabs(x_ref) > 1.0)
+          vx = max_vx * FLOAT_SIGN(x_ref);
+        else
+          vx = (max_vx - min_vx) * x_ref + min_vx * FLOAT_SIGN(x_ref);
+        if(fabs(y_ref) > 1.0)
+          vy = max_vy * FLOAT_SIGN(y_ref);
+        else
+          vy = (max_vy - min_vy) * y_ref + min_vy * FLOAT_SIGN(y_ref);
+        if(fabs(z_ref) > 1.0)
+          vz = max_vz * FLOAT_SIGN(z_ref);
+        else
+          vz = (max_vz - min_vz) * z_ref + min_vz * FLOAT_SIGN(z_ref);
+        if(fabs(yaw_ref) > 1.0)
+          ry = max_ry*FLOAT_SIGN(yaw_ref);
+        else
+          ry = max_ry*yaw_ref;
 
-	printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]",
-	       x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
-	printf("\tSpeeds: [%.2f-%.2f %.2f-%.2f %.2f-%.2f/ %.2f-%.2f]            \r",
-	       min_vx, max_vx, min_vy, max_vy,
-	       min_vz, max_vz, min_ry, max_ry);
+        // printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]",
+        //        x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
+        // printf("\tSpeeds: [%.2f-%.2f %.2f-%.2f %.2f-%.2f/ %.2f-%.2f]            \r",
+        //        min_vx, max_vx, min_vy, max_vy,
+        //        min_vz, max_vz, min_ry, max_ry);
 
+        // Command the computed velocities
+        sendSpeedReference(vx, vy, vz, ry);
+        actionFb.speed.linear.x = vx;
+        actionFb.speed.linear.y = vy;
+        actionFb.speed.linear.z = vz;
+        actionFb.speed.angular.z = ry;
+        //TODO: Fill dist2Goal feedback field, not important right now
+        navigationServer->publishFeedback(actionFb);
 
-	// Command the computed velocities
-	sendSpeedReference(vx, vy, vz, ry);
-	actionFb.speed.linear.x = vx;
-	actionFb.speed.linear.y = vy;
-	actionFb.speed.linear.z = vz;
-	actionFb.speed.angular.z = ry;
-	//TODO: Fill dist2Goal feedback field, not important right now
-	navigationServer->publishFeedback(actionFb);
+        //Publish markers
+        speedMarker.points[1].x = vx * cos(yaw) - vx *sin(yaw);
+        speedMarker.points[1].y = vy * cos(yaw) + vx *sin(yaw);
+        speedMarker.points[1].z = vz;
 
-	//Publish markers
-	speedMarker.points[1].x = vx * cos(yaw) - vx *sin(yaw);
-	speedMarker.points[1].y = vy * cos(yaw) + vx *sin(yaw);
-	speedMarker.points[1].z = vz;
+        rotMarker.scale.x = ry;
 
-	rotMarker.scale.x = ry;
-
-	speedMarkerPub.publish(speedMarker);
-	speedMarkerPub.publish(rotMarker);
-      } else {
-	ROS_ERROR("Relative pose control implemented yet");
-	// sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
+        speedMarkerPub.publish(speedMarker);
+        speedMarkerPub.publish(rotMarker);
+      } 
+      else {
+	      ROS_ERROR("Relative pose control implemented yet");
+	      // sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
       }	
     }
   ROS_INFO("Matrice_traj_tracker_node: Achieved Goal!!!");
@@ -770,6 +771,8 @@ void takeOffGoalCallback(){
 
   // Fly up until reaching the takeoff altitude
   ROS_INFO("Climbing to takeoff height ...");
+  // std::cout << "height=" << height << " , landingHeight=" << landingHeight << " , takeOffGoal->takeoff_height.data=" << takeOffGoal->takeoff_height.data << std::endl;
+  
   while((height-landingHeight)-takeOffGoal->takeoff_height.data < 0)
     {
       takeOffFb.percent_achieved.data = (height-landingHeight)-takeOffGoal->takeoff_height.data;
@@ -813,7 +816,7 @@ int main (int argc, char** argv)
   ros::Subscriber displayModeSub = nh.subscribe("/dji_sdk/display_mode", 1, &display_mode_callback);
   ros::Subscriber gps = nh.subscribe("/dji_sdk/gps_position", 1, &gps_callback);
   ros::Subscriber trajectorySub = nh.subscribe("/input_trajectory", 1, &input_trajectory_callback);
-  ros::Subscriber cmd_roll_pitch_yawrate_thrust_sub_ = nh.subscribe("/firefly/command/motor_speed", 1, &MotorSpeedCallback);
+  ros::Subscriber cmd_roll_pitch_yawrate_thrust_sub_ = nh.subscribe("/command/motor_speed", 1, &MotorSpeedCallback);
 
 
   controlPub = nh.advertise<sensor_msgs::Joy>("/dji_sdk/flight_control_setpoint_generic", 0);    
