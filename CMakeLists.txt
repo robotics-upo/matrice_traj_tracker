@@ -7,7 +7,7 @@ project(matrice_traj_tracker)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
@@ -17,8 +17,18 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   upo_actions
   mav_msgs
+  pcl_conversions 
+  pcl_ros
 )
 find_package(DJIOSDK REQUIRED)
+
+# ANN Library
+find_library(ANN_LIB NAMES ann)
+IF(${ANN_LIB} STREQUAL "ANN_LIB-NOTFOUND")
+  message(FATAL_ERROR "ANN library not found!\nTry 'sudo apt-get install libann-dev'\n")
+ELSE()
+  message(STATUS "ANN = ${ANN_LIB}")
+ENDIF()
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -141,7 +151,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(matrice_traj_tracker_node src/matrice_traj_tracker_node.cpp)
-add_executable(matrice_marsupial_traj_tracker_node src/matrice_marsupial_traj_tracker_node.cpp)
+add_executable(matrice_marsupial_traj_tracker_node src/matrice_marsupial_traj_tracker_node.cpp src/df2d.hpp)
 add_executable(fake_traj_publisher_node src/fake_traj_publisher_node.cpp)
 
 ## Rename C++ executable without prefix
@@ -164,6 +174,7 @@ target_link_libraries(matrice_traj_tracker_node
 target_link_libraries(matrice_marsupial_traj_tracker_node
   ${catkin_LIBRARIES}
   ${DJIOSDK_LIBRARIES}
+  ann
 )
 target_link_libraries(fake_traj_publisher_node
   ${catkin_LIBRARIES}
