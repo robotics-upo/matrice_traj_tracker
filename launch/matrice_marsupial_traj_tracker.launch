@@ -3,9 +3,7 @@
 
     <arg name="gazebo_sim" default="false"/>
     <arg name="global_frame_id" default="world"/>
-    <arg name="drone_frame_id" default="base_link" unless="$(arg gazebo_sim)"/>
-    <arg name="drone_frame_id" default="$(arg uav_name)/base_link" if="$(arg gazebo_sim)"/>
-
+    <arg name="drone_frame_id" default="base_link" />
 
     <arg name="arrived_th_xyz" default="0.25"/>
     <arg name="arrived_th_yaw" default="0.1"/>
