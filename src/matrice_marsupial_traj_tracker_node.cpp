@@ -204,7 +204,7 @@ void MotorSpeedCallback(const mav_msgs::ActuatorsConstPtr& msg_)
 // RC callback to read if drone is in F mode (allowed for automatic control)
 void rc_callback(const sensor_msgs::Joy::ConstPtr &msg)
 {
-	fModeActive = gazebo_sim;
+	
 	if(drone_type=="m210") {
 		if(msg->axes[4] > 1000)
 			fModeActive = true;
@@ -216,6 +216,8 @@ void rc_callback(const sensor_msgs::Joy::ConstPtr &msg)
 		else
 			fModeActive = false;
 	}
+  // ROS_INFO("rc_callback: fModeActive=%s , msg->axes[4]=%f",fModeActive?"true":"false", msg->axes[4]);
+
 	std_msgs::Bool fmod_msg;
 	fmod_msg.data = fModeActive;
 	fmode_pub.publish(fmod_msg);
@@ -483,6 +485,7 @@ bool monitoredTakeoff(void)
 		while ( motors_speed[0] < 550 && motors_speed[1] < 550 && motors_speed[2] < 550 && motors_speed[3] < 550 && (height - init_height) > 1.0 &&
 			ros::Time::now() - start_time < ros::Duration(20)) 
 		{
+			ROS_INFO("\tTaking off : height=%f , init_height=%f",height, init_height);
 			ros::Duration(0.01).sleep();
 			sendSpeedReference(0.0, 0.0, 1.0, 0.0);
 			ros::spinOnce();
@@ -694,6 +697,9 @@ void takeOffGoalCallback(){
 
   takeOffGoal = takeOffServer->acceptNewGoal();
 
+  if (gazebo_sim)
+    fModeActive = gazebo_sim;
+
   if(!droneLanded)
     {
       std::string error_msg = "Take off done before";
@@ -771,7 +777,6 @@ void takeOffGoalCallback(){
 
   // Fly up until reaching the takeoff altitude
   ROS_INFO("Climbing to takeoff height ...");
-  // std::cout << "height=" << height << " , landingHeight=" << landingHeight << " , takeOffGoal->takeoff_height.data=" << takeOffGoal->takeoff_height.data << std::endl;
   
   while((height-landingHeight)-takeOffGoal->takeoff_height.data < 0)
     {
@@ -780,6 +785,8 @@ void takeOffGoalCallback(){
       sendSpeedReference(0.0, 0.0, max_vz, 0.0);
       ros::spinOnce();
       ros::Duration(0.01).sleep();
+  // std::cout << "height=" << height << " , landingHeight=" << landingHeight << " , takeOffGoal->takeoff_height.data=" << takeOffGoal->takeoff_height.data << std::endl;
+    
     }  
   sendSpeedReference(0.0, 0.0, 0.0, 0.0);
   ros::spinOnce();
