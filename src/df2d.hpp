@@ -88,14 +88,16 @@ public:
 		Point2D p;
 		std::vector<Point2D> out;
 		for(size_t i=0; i<cloud.size(); i++)
-			if(isIntoGrid(cloud[i].x, cloud[i].y))
-				if(m_gridDist[pointToGrid(cloud[i].x, cloud[i].y)] < 50.0)
-				{
-					m_gridDist[pointToGrid(cloud[i].x, cloud[i].y)] = 100.0; 
+		{
+			//if(isIntoGrid(cloud[i].x, cloud[i].y))
+			//	if(m_gridDist[pointToGrid(cloud[i].x, cloud[i].y)] < 50.0)
+			//	{
+			//		m_gridDist[pointToGrid(cloud[i].x, cloud[i].y)] = 100.0; 
 					p.x = cloud[i].x;
 					p.y = cloud[i].y;
 					out.push_back(p);
-				}
+			//	}
+		}
 			
 		// Load the filtered cloud into the grid
 		loadCloud(out);

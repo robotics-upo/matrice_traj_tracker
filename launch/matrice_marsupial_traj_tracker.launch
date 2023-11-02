@@ -11,22 +11,21 @@
 
     <node pkg="matrice_traj_tracker" type="matrice_marsupial_traj_tracker_node" name="matrice_marsupial_traj_tracker_node" output="screen">
     <!-- node parameters -->
-        <param name="takeoff_height" type="double" value="2.0"/>
-        <param name="max_vx" type="double" value="0.2"/>
-        <param name="max_vy" type="double" value="0.2"/>
+        <param name="takeoff_height" type="double" value="2.5"/>
+        <param name="max_vx" type="double" value="0.3"/>
+        <param name="max_vy" type="double" value="0.3"/>
         <param name="max_vz" type="double" value="0.2"/>
-        <param name="max_ry" type="double" value="0.2"/>
-        <param name="min_vx" type="double" value="0.075"/>
-        <param name="min_vy" type="double" value="0.075"/>
-        <param name="min_vz" type="double" value="0.075"/>
-        <param name="min_ry" type="double" value="0.075"/>
+        <param name="max_ry" type="double" value="0.1"/>
+        <param name="min_vx" type="double" value="0.2"/>
+        <param name="min_vy" type="double" value="0.2"/>
+        <param name="min_vz" type="double" value="0.07"/>
+        <param name="min_ry" type="double" value="0.1"/>
         <param name="watchdog_freq" type="double" value="7.0"/>
         <param name="testing" value="false" />
         <param name="gazebo_sim" value="$(arg gazebo_sim)" />
         <param name="drone_model" value="m210" />
         <param name="drone_frame" value="$(arg drone_frame_id)" />
         <param name="global_frame_id" value="$(arg global_frame_id)"/>
-        <param name="_frame" value="$(arg global_frame_id)" />
         <param name="speed_reference_mode" value="true" />
 
         <param name="arrived_th_xyz" value="$(arg arrived_th_xyz)"/>
@@ -34,7 +33,17 @@
 
         <remap from="/dji_sdk/rc" to="/firefly/joy" if="$(arg gazebo_sim)"/>
         <remap from="/dji_sdk/gps_position" to="/firefly/gps" if="$(arg gazebo_sim)"/>
-    </node>
 
+        <param name="avoid_obstacles" value="false" />
+        <param name="square_area_size" type="double" value="6.0"/>
+        <param name="square_area_height" type="double" value="2.2"/>
+        <param name="inflation_radious" type="double" value="1.2"/>
+        <param name="time_horizon" type="double" value="5.0"/>
+        <param name="angle_samples" type="double" value="40.0"/>
+        <param name="velocity_samples" type="double" value="4.0"/>
+        <param name="time_samples" type="double" value="10.0"/>
+
+
+    </node>
 </launch>
 

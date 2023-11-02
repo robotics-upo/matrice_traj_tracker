@@ -25,6 +25,8 @@
 
 #include <actionlib/server/simple_action_server.h>
 #include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
+
 
 //Necessary for use of rotors_simulator
 #include <mav_msgs/Actuators.h>
@@ -46,7 +48,7 @@ std::string drone_type;
 uint8_t flight_status = 255;
 uint8_t display_mode  = 255;
 double height = -100000.0, landingHeight = -100000.0;
-ros::Publisher controlPub, speedMarkerPub, heightAboveTakeoffPub;
+ros::Publisher controlPub, speedMarkerPub, heightAboveTakeoffPub, gridPub, visPub;
 double x_ref, y_ref, xy_ref, z_ref, yaw_ref;
 double control_factor, arrived_th_xyz, arrived_th_yaw;
 tf::TransformListener *tfListener;
@@ -187,7 +189,7 @@ void pointcloudCallback(const sensor_msgs::PointCloud2ConstPtr& cloud)
   pcl_ros::transformPointCloud(droneFrame, pclTf, *cloud, baseCloud);
   
   // PointCloud2 to PointXYZ conversion, with range limits and downsampling
-  double min_range = 0.5*0.5;
+  double min_range = 0.65*0.65;
   double max_range = square_area_size*square_area_size / 4.0;
   std::vector<pcl::PointXYZ> downCloud;
   sensor_msgs::PointCloud2Iterator<float> iterX(baseCloud, "x");
@@ -228,6 +230,104 @@ void pointcloudCallback(const sensor_msgs::PointCloud2ConstPtr& cloud)
   for(size_t i=0; i<points.size(); i++) 
     if(fabs(points[i].z) < h)
       obstacles.push_back(points[i]);
+
+  // Update distance grid
+  grid2d.loadCloud(obstacles);
+  
+/*
+  // Update distance grid
+  grid2d.loadCloud(obstacles);
+  nav_msgs::OccupancyGrid gridMsg;
+  grid2d.buildGridMsg(gridMsg);
+  gridMsg.header.frame_id = droneFrame;
+  gridPub.publish(gridMsg);
+
+  // Sample vector velocities
+  std::vector<Point2D> validVels;
+  double a_inc = 2*M_PI/angle_samples;
+  double v_inc = (max_vx-min_vx)/vel_samples;
+  double t_inc = time_horizon/time_samples;
+  visualization_msgs::MarkerArray mArray;
+  int mId = 0;
+  for(double a = -M_PI; a<M_PI+0.1; a+=a_inc)
+  {
+    // Unit velocity vector
+    double ux = cos(a);
+    double uy = sin(a);
+
+    // Sample this unit vector for the different velocities
+    for(double v = min_vx; v<max_vx+0.01; v+=v_inc)
+    {
+      // Sample this velocity vector all along the trajectory
+      bool freeObstacles = true;
+      for(double t=0; t<time_horizon+0.01; t+=t_inc)
+        if(grid2d.getDist(ux*v*t, uy*v*t) < inflation_radious)
+          freeObstacles = false;
+      if(freeObstacles)
+        validVels.push_back(Point2D(ux*v, uy*v));
+      
+      // Create a marker
+      geometry_msgs::Point p0, p1;
+      p0.x = p0.y = p0.z = 0.0;
+      p1.x = ux*v*time_horizon; p1.y = uy*v*time_horizon; p1.z = 0.0;
+      visualization_msgs::Marker marker;
+      marker.header.frame_id = "base_link";
+      marker.header.stamp = ros::Time();
+      marker.ns = "tro";
+      marker.id = mId++;
+      marker.type = visualization_msgs::Marker::ARROW;
+      if(freeObstacles)
+        marker.action = visualization_msgs::Marker::ADD; 
+      else
+        marker.action = visualization_msgs::Marker::DELETE;
+      marker.points.push_back(p0);
+      marker.points.push_back(p1);
+      marker.scale.x = 0.1;
+      marker.scale.y = 0.15;
+      marker.scale.z = 0.1;
+      marker.color.a = 1.0; // Don't forget to set the alpha!
+      marker.color.r = 0.0;
+      marker.color.g = 1.0;
+      marker.color.b = 0.0;
+      mArray.markers.push_back(marker);
+    }
+  }
+
+  // Get the valid velocity that move the robot closest to the reference
+  double mind2 = 1000000000000;
+  double x_ref = 4, y_ref = 0;
+  Point2D bestVel = Point2D(0.0, 0.0);
+  for(size_t i=0; i<validVels.size(); i++)
+  {
+    double d2 = (validVels[i].x*time_horizon-x_ref)*(validVels[i].x*time_horizon-x_ref) + (validVels[i].y*time_horizon-y_ref)*(validVels[i].y*time_horizon-y_ref);
+    if(d2<mind2)
+    {
+      mind2 = d2;
+      bestVel = validVels[i];
+    }
+  }
+  geometry_msgs::Point p0, p1;
+  p0.x = p0.y = p0.z = 0.0;
+  p1.x = bestVel.x*time_horizon; p1.y = bestVel.y*time_horizon; p1.z = 0.0;
+  visualization_msgs::Marker marker;
+  marker.header.frame_id = "base_link";
+  marker.header.stamp = ros::Time();
+  marker.ns = "tro";
+  marker.id = mId++;
+  marker.type = visualization_msgs::Marker::ARROW;
+  marker.action = visualization_msgs::Marker::ADD; 
+  marker.points.push_back(p0);
+  marker.points.push_back(p1);
+  marker.scale.x = 0.15;
+  marker.scale.y = 0.20;
+  marker.scale.z = 0.15;
+  marker.color.a = 1.0; // Don't forget to set the alpha!
+  marker.color.r = 0.0;
+  marker.color.g = 0.0;
+  marker.color.b = 1.0;
+  mArray.markers.push_back(marker);
+  visPub.publish( mArray );
+*/
 }
 
 void sendSpeedReference(float vx, float vy, float vz, float ry)
@@ -684,7 +784,7 @@ void navigateGoalCallback(){
       double vx, vy, vxy, vz, ry;
       vxy = vz = ry = 0.0;
 
-      if(fabs(xy_ref) > 1.0)
+      if(xy_ref > 1.0)
         vxy = max_vx;
       else
         vxy = (max_vx - min_vx) * xy_ref + min_vx;
@@ -700,24 +800,29 @@ void navigateGoalCallback(){
       vx = cos_ang * vxy;
       vy = sin_ang * vxy;
 
-/*
-      printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]",
+
+      printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]\n",
               x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
-      printf("\tSpeeds: [%.2f-%.2f %.2f-%.2f %.2f-%.2f/ %.2f-%.2f]            \r",
+      /*printf("\tSpeeds: [%.2f-%.2f %.2f-%.2f %.2f-%.2f/ %.2f-%.2f]            \r",
               min_vx, max_vx, min_vy, max_vy,
-              min_vz, max_vz, min_ry, max_ry);
-*/
+              min_vz, max_vz, min_ry, max_ry);*/
+
       // Compute the best reference according to the trayectory roll out
-      if(avoidObstacles)
-      {
-        // Update distance grid
-        grid2d.loadCloud(obstacles);
+      if(avoidObstacles && obstacles.size()>0)
+      {        
+        // publish grid
+        //nav_msgs::OccupancyGrid gridMsg;
+        //grid2d.buildGridMsg(gridMsg);
+        //gridMsg.header.frame_id = droneFrame;
+        //gridPub.publish(gridMsg);
 
         // Sample vector velocities
         std::vector<Point2D> validVels;
         double a_inc = 2*M_PI/angle_samples;
         double v_inc = (max_vx-min_vx)/vel_samples;
         double t_inc = time_horizon/time_samples;
+        visualization_msgs::MarkerArray mArray;
+        int mId = 0;
         for(double a = -M_PI; a<M_PI+0.1; a+=a_inc)
         {
           // Unit velocity vector
@@ -734,6 +839,31 @@ void navigateGoalCallback(){
                 freeObstacles = false;
             if(freeObstacles)
               validVels.push_back(Point2D(ux*v, uy*v));
+
+            // Create a marker
+            geometry_msgs::Point p0, p1;
+            p0.x = p0.y = p0.z = 0.0;
+            p1.x = ux*v*time_horizon; p1.y = uy*v*time_horizon; p1.z = 0.0;
+            visualization_msgs::Marker marker;
+            marker.header.frame_id = "base_link";
+            marker.header.stamp = ros::Time::now();
+            marker.ns = "tro";
+            marker.id = mId++;
+            marker.type = visualization_msgs::Marker::ARROW;
+            if(freeObstacles)
+              marker.action = visualization_msgs::Marker::ADD; 
+            else
+              marker.action = visualization_msgs::Marker::DELETE;
+            marker.points.push_back(p0);
+            marker.points.push_back(p1);
+            marker.scale.x = 0.1;
+            marker.scale.y = 0.15;
+            marker.scale.z = 0.1;
+            marker.color.a = 1.0; 
+            marker.color.r = 0.0;
+            marker.color.g = 1.0;
+            marker.color.b = 0.0;
+            mArray.markers.push_back(marker);
           }
         }
 
@@ -742,7 +872,7 @@ void navigateGoalCallback(){
         Point2D bestVel = Point2D(0.0, 0.0);
         for(size_t i=0; i<validVels.size(); i++)
         {
-          double d2 = (validVels[i].x-x_ref)*(validVels[i].x-x_ref) + (validVels[i].y-y_ref)*(validVels[i].y-y_ref);
+          double d2 = (validVels[i].x*time_horizon-x_ref)*(validVels[i].x*time_horizon-x_ref) + (validVels[i].y*time_horizon-y_ref)*(validVels[i].y*time_horizon-y_ref);
           if(d2<mind2)
           {
             mind2 = d2;
@@ -751,10 +881,32 @@ void navigateGoalCallback(){
         }
         vx = bestVel.x;
         vy = bestVel.y;
+
+        // Publish the right vel
+        geometry_msgs::Point p0, p1;
+        p0.x = p0.y = p0.z = 0.0;
+        p1.x = bestVel.x*time_horizon; p1.y = bestVel.y*time_horizon; p1.z = 0.0;
+        visualization_msgs::Marker marker;
+        marker.header.frame_id = "base_link";
+        marker.header.stamp = ros::Time::now();
+        marker.ns = "tro";
+        marker.id = mId++;
+        marker.type = visualization_msgs::Marker::ARROW;
+        marker.action = visualization_msgs::Marker::ADD; 
+        marker.points.push_back(p0);
+        marker.points.push_back(p1);
+        marker.scale.x = 0.15;
+        marker.scale.y = 0.20;
+        marker.scale.z = 0.15;
+        marker.color.a = 1.0; 
+        marker.color.r = 0.0;
+        marker.color.g = 0.0;
+        marker.color.b = 1.0;
+        mArray.markers.push_back(marker);
+        visPub.publish( mArray );
       }
 
-      printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]",
-              x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
+      //printf("error[%.2f %.2f %.2f / %.2f]  Commands: [%.2f %.2f %.2f / %.2f]\n", x_ref,y_ref,z_ref,yaw_ref, vx, vy, vz, ry);
 
       // Command the computed velocities
       sendSpeedReference(vx, vy, vz, ry);
@@ -766,14 +918,14 @@ void navigateGoalCallback(){
       navigationServer->publishFeedback(actionFb);
 
       //Publish markers
-      speedMarker.points[1].x = vx * cos(yaw) - vx *sin(yaw);
-      speedMarker.points[1].y = vy * cos(yaw) + vx *sin(yaw);
-      speedMarker.points[1].z = vz;
+      //speedMarker.points[1].x = vx * cos(yaw) - vx *sin(yaw);
+      //speedMarker.points[1].y = vy * cos(yaw) + vx *sin(yaw);
+      //peedMarker.points[1].z = vz;
 
-      rotMarker.scale.x = ry;
+      //rotMarker.scale.x = ry;
 
-      speedMarkerPub.publish(speedMarker);
-      speedMarkerPub.publish(rotMarker);
+      //speedMarkerPub.publish(speedMarker);
+      //speedMarkerPub.publish(rotMarker);
     } 
     else {
       ROS_ERROR("Relative pose control implemented yet");
@@ -892,6 +1044,24 @@ void takeOffGoalCallback(){
 	
   ROS_INFO("\tdone!");
 
+  // Get take-off position
+  tf::StampedTransform takeOffTf;
+  tf::Stamped<tf::Point> global_goal_point, local_goal_point;  
+  try
+  {
+    tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
+    tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), takeOffTf);
+  }
+  catch (tf::TransformException ex)
+  {
+    ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
+    return;
+  }
+  global_goal_point.frame_id_ = global_frame_id;
+  global_goal_point.setX(takeOffTf.getOrigin().getX());
+  global_goal_point.setY(takeOffTf.getOrigin().getY());
+  global_goal_point.setZ(takeOffTf.getOrigin().getZ());
+
   // Perform automatic take-off
   ROS_INFO("Taking-off ...");
   dji_sdk::DroneTaskControl droneTaskControl;
@@ -926,9 +1096,41 @@ void takeOffGoalCallback(){
     {
       takeOffFb.percent_achieved.data = (height-landingHeight)-takeOffGoal->takeoff_height.data;
       takeOffServer->publishFeedback(takeOffFb);
-      sendSpeedReference(0.0, 0.0, max_vz, 0.0);
+
+      // Get latest robot position
+      tf::StampedTransform baseTf;
+      try {
+        tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
+        tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
+        tfListener->transformPoint(droneFrame, ros::Time(0), global_goal_point, global_frame_id, local_goal_point);
+      }
+      catch (tf::TransformException ex) {
+        ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
+        return;
+      }
+    
+      // Compute velocities to stay at take-off position
+      double x_ref = local_goal_point.getX();
+      double y_ref = local_goal_point.getY();
+      double xy_ref = std::sqrt(pow(x_ref, 2.0) + pow(y_ref, 2.0));
+      double sin_ang = y_ref / xy_ref;
+      double cos_ang = x_ref / xy_ref;
+      
+      // Compute commmanded velocitiesx_ref
+      double vx, vy, vxy;
+      vxy = 0.0;
+      if(fabs(xy_ref) > 1.0)
+        vxy = max_vx;
+      else
+        vxy = (max_vx - min_vx) * xy_ref + min_vx;
+      vx = cos_ang * vxy;
+      vy = sin_ang * vxy;
+
+      // Send references
+      sendSpeedReference(vx, vy, max_vz, 0.0);
       ros::spinOnce();
       ros::Duration(0.01).sleep();
+std::cout << "height=" << height << " , landingHeight=" << landingHeight << " , takeOffGoal->takeoff_height.data=" << takeOffGoal->takeoff_height.data << "/r";
     }  
   sendSpeedReference(0.0, 0.0, 0.0, 0.0);
   ros::spinOnce();
@@ -1038,20 +1240,22 @@ int main (int argc, char** argv)
   // Obstacle avoidance stuff
   nh.param("avoid_obstacles", avoidObstacles, false);
   nh.param("square_area_size", square_area_size, 6.0);
-  nh.param("square_area_height", square_area_height, 3.0);
-  nh.param("inflation_radious", inflation_radious, 2.0);
+  nh.param("square_area_height", square_area_height, 2.2);
+  nh.param("inflation_radious", inflation_radious, 1.0);
   nh.param("angle_samples", angle_samples, 40.0);
   nh.param("velocity_samples", vel_samples, 4.0);
   nh.param("time_samples", time_samples, 10.0);
   nh.param("time_horizon", time_horizon, 10.0);
 
-  if(avoidObstacles)
-  {
+  ros::Subscriber pcSub, imuSub;
+  if(avoidObstacles) {
     roll = pitch = yaw = 0;
     obstacles.clear();
     grid2d.setup(-square_area_size/2.0, square_area_size/2.0, -square_area_size/2.0, square_area_size/2.0, 0.05);
-    ros::Subscriber	pcSub = nh.subscribe("/cloud", 1, &pointcloudCallback);
-    ros::Subscriber	imuSub = nh.subscribe("/imu", 1, &imuCallback);
+    pcSub = nh.subscribe("/os1_cloud_node/points_non_dense", 1, &pointcloudCallback);
+    imuSub = nh.subscribe("/dji_sdk/imu", 1, &imuCallback);
+    gridPub = nh.advertise<nav_msgs::OccupancyGrid>("grid", 0);
+    visPub = nh.advertise<visualization_msgs::MarkerArray>( "tro_marker", 0 );
   }
 
   watchdofPeriod = ros::Duration(1/watchdogFreq);
