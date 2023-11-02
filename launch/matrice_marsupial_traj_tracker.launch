@@ -4,8 +4,8 @@
     <arg name="global_frame_id" default="world"/>
     <arg name="drone_frame_id" default="base_link" />
 
-    <arg name="arrived_th_xyz" default="0.25"/>
-    <arg name="arrived_th_yaw" default="0.1"/>
+    <arg name="arrived_th_xyz" default="0.3"/>
+    <arg name="arrived_th_yaw" default="0.2"/>
 
 
     <node pkg="matrice_traj_tracker" type="matrice_marsupial_traj_tracker_node" name="matrice_marsupial_traj_tracker_node" output="screen">
