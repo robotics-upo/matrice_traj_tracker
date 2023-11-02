@@ -3,9 +3,6 @@
 #include <ros/node_handle.h>
 #include <sensor_msgs/Joy.h>
 #include <sensor_msgs/NavSatFix.h>
-#include <sensor_msgs/Imu.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <sensor_msgs/point_cloud2_iterator.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/UInt8.h>
 #include <std_msgs/Float32.h>
@@ -16,8 +13,6 @@
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_listener.h>
-#include <pcl_ros/transforms.h>
-#include <pcl/point_types.h>
 
 #include <upo_actions/Navigate3DAction.h>
 #include <upo_actions/LandingAction.h>
@@ -30,8 +25,6 @@
 
 //Necessary for use of rotors_simulator
 #include <mav_msgs/Actuators.h>
-
-#include "df2d.hpp" // 2D Distance grid
 
 
 using namespace std;
@@ -62,14 +55,6 @@ bool refUpdated = false;
 double max_vx, max_vy, max_vz, max_ry;
 double min_vx, min_vy, min_vz, min_ry;
 
-// Used for obstacle avoidance
-bool avoidObstacles;
-double roll, pitch, yaw;
-std::vector<pcl::PointXYZ> obstacles;
-double square_area_size, square_area_height, inflation_radious;
-double angle_samples, vel_samples, time_samples, time_horizon;
-DF2D grid2d;
-
 //Upo actions stuff
 //Navigation server
 std::unique_ptr<NavigationServer> navigationServer;
@@ -99,6 +84,7 @@ ros::Time lastT, currentT;
 ros::Duration watchdofPeriod;
 bool gazebo_sim=false;
 bool speed_ref_mode = false;
+
 void configMarker(){
 
 	geometry_msgs::Point p1,p2;
@@ -406,7 +392,7 @@ void MotorSpeedCallback(const mav_msgs::ActuatorsConstPtr& msg_)
 // RC callback to read if drone is in F mode (allowed for automatic control)
 void rc_callback(const sensor_msgs::Joy::ConstPtr &msg)
 {
-	fModeActive = gazebo_sim;
+	
 	if(drone_type=="m210") {
 		if(msg->axes[4] > 1000)
 			fModeActive = true;
@@ -418,6 +404,8 @@ void rc_callback(const sensor_msgs::Joy::ConstPtr &msg)
 		else
 			fModeActive = false;
 	}
+  // ROS_INFO("rc_callback: fModeActive=%s , msg->axes[4]=%f",fModeActive?"true":"false", msg->axes[4]);
+
 	std_msgs::Bool fmod_msg;
 	fmod_msg.data = fModeActive;
 	fmode_pub.publish(fmod_msg);
@@ -685,6 +673,7 @@ bool monitoredTakeoff(void)
 		while ( motors_speed[0] < 550 && motors_speed[1] < 550 && motors_speed[2] < 550 && motors_speed[3] < 550 && (height - init_height) > 1.0 &&
 			ros::Time::now() - start_time < ros::Duration(20)) 
 		{
+			ROS_INFO("\tTaking off : height=%f , init_height=%f",height, init_height);
 			ros::Duration(0.01).sleep();
 			sendSpeedReference(0.0, 0.0, 1.0, 0.0);
 			ros::spinOnce();
@@ -714,18 +703,16 @@ void navigateGoalCallback(){
   else{
     ROS_INFO("Matrice_traj_tracker_node: Receiving new goal to navigate");
   }
-
   //TODO: Okey if a new goal is while we are navigating to another goal it means that the trajectory has been re-calculated. So what to do?
   actionGoal = navigationServer->acceptNewGoal();
-  
   //As it you don't refuse the first trajectory
   currentT = ros::Time::now();
 
   // Get yaw from goal
   tf::Quaternion q(actionGoal->global_goal.pose.orientation.x, 
-        actionGoal->global_goal.pose.orientation.y, 
-        actionGoal->global_goal.pose.orientation.z, 
-        actionGoal->global_goal.pose.orientation.w);
+		   actionGoal->global_goal.pose.orientation.y, 
+		   actionGoal->global_goal.pose.orientation.z, 
+		   actionGoal->global_goal.pose.orientation.w);
   double r, p, yaw, yaw_ref, yaw_goal;
 
   tf::Matrix3x3 m(q);
@@ -739,20 +726,12 @@ void navigateGoalCallback(){
   global_goal_point.setZ(actionGoal->global_goal.pose.position.z);
 
   ROS_INFO("Matrice_traj_tracker_node:	goal=[%f %f %f / %f]", global_goal_point.getX(),
-      global_goal_point.getY(),
-      global_goal_point.getZ(), yaw_goal);
+	   global_goal_point.getY(),
+	   global_goal_point.getZ(), yaw_goal);
 
-  bool achieved_xy_ = false, achieved_z_ = false, achieved_yaw_ = false;
-  while ( !(achieved_xy_ && achieved_yaw_ && achieved_z_) && ros::ok()) {
-    
-    // Get latest robot position
-    try
-    {
-      tfListener->waitForTransform(global_frame_id, droneFrame, ros::Time(0), ros::Duration(.1));
-      tfListener->lookupTransform(global_frame_id, droneFrame, ros::Time(0), baseTf);
-      tfListener->transformPoint(droneFrame, ros::Time(0), global_goal_point, global_frame_id, local_goal_point);
-    }
-    catch (tf::TransformException ex)
+  bool achieved_x_ = false, achieved_y_ = false, achieved_z_ = false, achieved_yaw_ = false;
+  ros::Time start_time = ros::Time::now();
+  while ( !(achieved_x_ && achieved_y_ && achieved_yaw_ && achieved_z_) && ros::ok()) 
     {
       ROS_ERROR("matrice_traj_tracker_node error: %s",ex.what());
       return;
@@ -955,10 +934,12 @@ void landingGoalCallback(){
 
   landingGoal = landingServer->acceptNewGoal();
 
-  if(droneLanded){ // If already landed, do nothing
-    landingResult.success = true;
-    landingResult.extra_info = "Landing OK";
-    landingServer->setSucceeded(landingResult);
+  if(droneLanded){
+    std::string error_msg = "Not possible to land, drone already landed";
+    ROS_ERROR("Error %s", error_msg.c_str());
+    landingResult.success=false;
+    landingResult.extra_info=error_msg;
+    landingServer->setAborted(landingResult);
     return;
   }
   if(!fModeActive){
@@ -998,14 +979,18 @@ void takeOffGoalCallback(){
 
   takeOffGoal = takeOffServer->acceptNewGoal();
 
-  if(!droneLanded) // Do nothing if drone already tock-off
+  if (gazebo_sim)
+    fModeActive = gazebo_sim;
+
+  if(!droneLanded)
     {
-      takeOffResult.success=true;
-      takeOffResult.extra_info="TakeOff Done";
-      takeOffServer->setSucceeded(takeOffResult);
+      std::string error_msg = "Take off done before";
+      ROS_ERROR("Error %s", error_msg.c_str());
+      takeOffResult.success=false;
+      takeOffResult.extra_info=error_msg;
+      takeOffServer->setAborted(takeOffResult);
       return;
     }
-
   // Get takeoff altitude
   ROS_INFO("Checking takeoff altitude ...");
   while(takeOffGoal->takeoff_height.data < -10000.0)
@@ -1092,6 +1077,7 @@ void takeOffGoalCallback(){
 
   // Fly up until reaching the takeoff altitude
   ROS_INFO("Climbing to takeoff height ...");
+  
   while((height-landingHeight)-takeOffGoal->takeoff_height.data < 0)
     {
       takeOffFb.percent_achieved.data = (height-landingHeight)-takeOffGoal->takeoff_height.data;
@@ -1130,7 +1116,7 @@ void takeOffGoalCallback(){
       sendSpeedReference(vx, vy, max_vz, 0.0);
       ros::spinOnce();
       ros::Duration(0.01).sleep();
-std::cout << "height=" << height << " , landingHeight=" << landingHeight << " , takeOffGoal->takeoff_height.data=" << takeOffGoal->takeoff_height.data << "/r";
+      std::cout << "height=" << height << " , landingHeight=" << landingHeight << " , takeOffGoal->takeoff_height.data=" << takeOffGoal->takeoff_height.data << "/r";
     }  
   sendSpeedReference(0.0, 0.0, 0.0, 0.0);
   ros::spinOnce();
@@ -1167,7 +1153,8 @@ int main (int argc, char** argv)
   ros::Subscriber displayModeSub = nh.subscribe("/dji_sdk/display_mode", 1, &display_mode_callback);
   ros::Subscriber gps = nh.subscribe("/dji_sdk/gps_position", 1, &gps_callback);
   ros::Subscriber trajectorySub = nh.subscribe("/input_trajectory", 1, &input_trajectory_callback);
-  ros::Subscriber cmd_roll_pitch_yawrate_thrust_sub_ = nh.subscribe("/firefly/command/motor_speed", 1, &MotorSpeedCallback);
+  ros::Subscriber cmd_roll_pitch_yawrate_thrust_sub_ = nh.subscribe("/command/motor_speed", 1, &MotorSpeedCallback);
+
 
   controlPub = nh.advertise<sensor_msgs::Joy>("/dji_sdk/flight_control_setpoint_generic", 0);    
   heightAboveTakeoffPub = nh.advertise<std_msgs::Float64>("/height_above_takeoff", 0);
@@ -1199,6 +1186,7 @@ int main (int argc, char** argv)
   fmode_pub = nh.advertise<std_msgs::Bool>("fmode", 1, true);
 	
   // Read node parameters
+  double takeoffHeight;
   double watchdogFreq;
   nh.param("drone_model", drone_type, (std::string)"m210");
   if(!nh.getParam("gazebo_sim", gazebo_sim)){
@@ -1214,6 +1202,13 @@ int main (int argc, char** argv)
   }
   ROS_INFO("Using drone frame %s. Global frame: %s",droneFrame.c_str(), global_frame_id.c_str());
   configMarker();
+  if(!nh.getParam("takeoff_height", takeoffHeight))
+    takeoffHeight = 3.0;
+  if(takeoffHeight < 2.0 || takeoffHeight > 10.0)
+    {
+      ROS_INFO("takeoff_height must be in range 2.0 to 10.0, setting to 3.0");
+      takeoffHeight = 3.0;
+    }	
   if(!nh.getParam("max_vx", max_vx))
     max_vx = 1.0;
   if(!nh.getParam("max_vy", max_vy))

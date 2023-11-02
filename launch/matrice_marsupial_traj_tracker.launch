@@ -1,9 +1,8 @@
 <launch>
     <arg name="gazebo_sim" default="false"/>
+    
     <arg name="global_frame_id" default="world"/>
-    <arg name="drone_frame_id" default="base_link" unless="$(arg gazebo_sim)"/>
-    <arg name="drone_frame_id" default="firefly/base_link" if="$(arg gazebo_sim)"/>
-
+    <arg name="drone_frame_id" default="base_link" />
 
     <arg name="arrived_th_xyz" default="0.25"/>
     <arg name="arrived_th_yaw" default="0.1"/>
@@ -22,7 +21,6 @@
         <param name="min_ry" type="double" value="0.1"/>
         <param name="watchdog_freq" type="double" value="7.0"/>
         <param name="testing" value="false" />
-        <param name="gazebo_sim" value="$(arg gazebo_sim)" />
         <param name="drone_model" value="m210" />
         <param name="drone_frame" value="$(arg drone_frame_id)" />
         <param name="global_frame_id" value="$(arg global_frame_id)"/>
