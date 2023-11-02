@@ -25,7 +25,8 @@
 
 //Necessary for use of rotors_simulator
 #include <mav_msgs/Actuators.h>
-
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/Imu.h>
 
 using namespace std;
 typedef actionlib::SimpleActionServer<upo_actions::Navigate3DAction> NavigationServer;
@@ -43,6 +44,7 @@ uint8_t display_mode  = 255;
 double height = -100000.0, landingHeight = -100000.0;
 ros::Publisher controlPub, speedMarkerPub, heightAboveTakeoffPub, gridPub, visPub;
 double x_ref, y_ref, xy_ref, z_ref, yaw_ref;
+double roll, pitch, yaw;
 double control_factor, arrived_th_xyz, arrived_th_yaw;
 tf::TransformListener *tfListener;
 double goal_yaw;
@@ -1116,7 +1118,7 @@ void takeOffGoalCallback(){
       sendSpeedReference(vx, vy, max_vz, 0.0);
       ros::spinOnce();
       ros::Duration(0.01).sleep();
-      std::cout << "height=" << height << " , landingHeight=" << landingHeight << " , takeOffGoal->takeoff_height.data=" << takeOffGoal->takeoff_height.data << "/r";
+      std::cout << "height=" << height << " , landingHeight=" << landingHeight << " , takeOffGoal->takeoff_height.data=" << takeOffGoal->takeoff_height.data << "\r";
     }  
   sendSpeedReference(0.0, 0.0, 0.0, 0.0);
   ros::spinOnce();
