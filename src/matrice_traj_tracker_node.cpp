@@ -352,7 +352,7 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
   }	
 }
 
-
+// Takeoff 
 // Perform a monitored takeoff 
 bool monitoredTakeoff(void)
 {  
