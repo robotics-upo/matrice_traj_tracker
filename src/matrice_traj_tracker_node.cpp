@@ -195,11 +195,17 @@ void rc_callback(const sensor_msgs::Joy::ConstPtr &msg)
       fModeActive = true;
     else
       fModeActive = false;
-  } else if(drone_type=="m600") {
-    if(msg->axes[4] < -1000)
-      fModeActive = true;
-    else
-      fModeActive = false;
+  } else if(drone_type=="m600"){
+    if(msg->axes[4] < -1000){
+      if(!fModeActive)
+        ROS_INFO("Changing to Fmode.");
+        fModeActive = true;      
+    }
+    else{
+      if (fModeActive)
+        ROS_INFO("Deactivating Fmode.");
+        fModeActive = false;
+    }
   }
 }	
 
@@ -400,7 +406,7 @@ bool monitoredTakeoff(void)
     }
 
   // Final check: Finished takeoff
-  while ( (display_mode == DJISDK::DisplayMode::MODE_ASSISTED_TAKEOFF ||
+  while ((display_mode == DJISDK::DisplayMode::MODE_ASSISTED_TAKEOFF ||
 	   display_mode == DJISDK::DisplayMode::MODE_AUTO_TAKEOFF) &&
 	  ros::Time::now() - start_time < ros::Duration(20)) 
     {
@@ -455,7 +461,7 @@ void landingGoalCallback(){
   landingGoal = landingServer->acceptNewGoal();
 
   if(droneLanded){
-    std::string error_msg = "Not possible to land, drone already landed";
+    std::string error_msg = "Not possible to land, drone already landed";   
     ROS_ERROR("Error %s", error_msg.c_str());
     landingResult.success=false;
     landingResult.extra_info=error_msg;
@@ -467,7 +473,6 @@ void landingGoalCallback(){
     ROS_ERROR("Error %s", error_msg.c_str());
     landingResult.success=false;
     landingResult.extra_info=error_msg;
-
     landingServer->setAborted(landingResult);
     return;
   }
@@ -497,6 +502,7 @@ void landingGoalCallback(){
 void takeOffGoalCallback(){
   takeOffGoal = takeOffServer->acceptNewGoal();
 
+  ROS_INFO("Got a takeoff request.");
   if(!droneLanded)
     {
       std::string error_msg = "Take off done before";
@@ -595,10 +601,6 @@ void takeOffGoalCallback(){
     ros::spinOnce();
     ros::Duration(0.01).sleep();
     } 
-
-    ROS_INFO("\tdone!");
-    takeOffResult.success=true;
-    takeOffResult.extra_info="TakeOff Done";
   */
   takeOffServer->setSucceeded(takeOffResult);
   droneLanded = false;

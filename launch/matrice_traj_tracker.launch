@@ -13,7 +13,7 @@
         <param name="min_ry" type="double" value="0.2"/>
         <param name="watchdog_freq" type="double" value="7.0"/>
         <param name="testing" value="false" />
-        <param name="gazebo_sim" value="true" />
+        <param name="gazebo_sim" value="false" />
         <param name="drone_model" value="m600" />
         <param name="drone_frame" value="firefly/base_link" />
         <param name="speed_reference_mode" value="true" />
