@@ -15,7 +15,8 @@
         <param name="testing" value="false" />
         <param name="gazebo_sim" value="false" />
         <param name="drone_model" value="m600" />
-        <param name="drone_frame" value="firefly/base_link" />
+        <!-- <param name="drone_frame" value="firefly/base_link" /> -->
+        <param name="drone_frame" value="base_link"/>
         <param name="speed_reference_mode" value="true" />
     </node>
 

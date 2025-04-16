@@ -7,8 +7,13 @@
 #include <std_msgs/Float32.h>
 #include <std_msgs/Float64.h>
 #include <dji_sdk/dji_sdk.h>
+#include <dji_sdk/Activation.h>
 #include <dji_sdk/DroneTaskControl.h>
 #include <dji_sdk/SDKControlAuthority.h>
+// SDK core library
+#include <djiosdk/dji_vehicle.hpp>
+
+
 #include <trajectory_msgs/MultiDOFJointTrajectory.h>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_listener.h>
@@ -16,15 +21,18 @@
 #include <upo_actions/Navigate3DAction.h>
 #include <upo_actions/LandingAction.h>
 #include <upo_actions/TakeOffAction.h>
+#include <upo_actions/GPSNavigationAction.h>
 
 #include <actionlib/server/simple_action_server.h>
 #include <visualization_msgs/Marker.h>
 
+#include "gps_navigation_utils.hpp"
 
 using namespace std;
 typedef actionlib::SimpleActionServer<upo_actions::Navigate3DAction> NavigationServer;
 typedef actionlib::SimpleActionServer<upo_actions::LandingAction> LandingServer;
 typedef actionlib::SimpleActionServer<upo_actions::TakeOffAction> TakeOffServer;
+typedef actionlib::SimpleActionServer<upo_actions::GPSNavigationAction> GPSNavigationServer;
 
 #define FLOAT_SIGN(val) (val > 0.0) ? +1.0 : -1.0
 
@@ -65,9 +73,15 @@ std::unique_ptr<TakeOffServer> takeOffServer;
 upo_actions::TakeOffFeedback takeOffFb;
 upo_actions::TakeOffResult takeOffResult;
 upo_actions::TakeOffGoalConstPtr takeOffGoal;
+// GPS Navigation Server
+std::unique_ptr<GPSNavigationServer> gpsNavigationServer;
+upo_actions::GPSNavigationFeedback gpsNavigationFb;
+upo_actions::GPSNavigationResult gpsNavigationResult;
+upo_actions::GPSNavigationGoalConstPtr gpsNavigationGoal;
 
 //Service clients
 ros::ServiceClient ctrl_authority_service,drone_task_service;
+ros::ServiceClient drone_activation_service, waypoint_upload_service, waypoint_action_service;
 visualization_msgs::Marker speedMarker,rotMarker;
 //Used to set the marker frame
 std::string droneFrame;
@@ -77,6 +91,7 @@ ros::Time lastT, currentT;
 ros::Duration watchdogPeriod;
 bool gazebo_sim=false;
 bool speed_ref_mode = false;
+
 void configMarker(){
 
   geometry_msgs::Point p1,p2;
@@ -191,15 +206,24 @@ void sendRelPoseReference(float x, float y, float z, float ry)
 void rc_callback(const sensor_msgs::Joy::ConstPtr &msg)
 {
   if(drone_type=="m210"){
-    if(msg->axes[4] > 1000)
+    if(msg->axes[4] > 1000) {
+      if(!fModeActive)
+        ROS_INFO("Changing to Fmode.");
+      
       fModeActive = true;
-    else
+    }
+    else {
+      if (fModeActive)
+        ROS_INFO("Deactivating Fmode.");
+      
       fModeActive = false;
+    }
   } else if(drone_type=="m600"){
     if(msg->axes[4] < -1000){
       if(!fModeActive)
         ROS_INFO("Changing to Fmode.");
-        fModeActive = true;      
+
+      fModeActive = true;      
     }
     else{
       if (fModeActive)
@@ -236,10 +260,11 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& msg)
 // Commanded robot trajectory
 void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::ConstPtr& msg)
 {
-  //cout << 1 << endl;
   //Okey, if no goal active, forget about 
-  if(!navigationServer->isActive())
+  if(!navigationServer->isActive()) {
+    ROS_INFO("Received new trajectory when a trajectory is still active. Discarding.");
     return;
+  }
 
   currentT=msg->header.stamp;
   if(currentT-lastT > watchdogPeriod){
@@ -250,7 +275,6 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
   }
   lastT=currentT;
 
-  //cout << 2 << endl;
   // Get the reference position and orientation
   x_ref = msg->points[0].transforms[0].translation.x;
   y_ref = msg->points[0].transforms[0].translation.y;
@@ -283,32 +307,33 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
   // Apply lower bound to the given refence only when last wayoint is used
   if(msg->points.size() == 1)
     {
-      if(fabs(x_ref) < arrived_th_xyz){
-	x_old=x_ref;
-	x_ref = 0.0;
+      if(fabs(x_ref) < arrived_th_xyz) {
+	      x_old=x_ref;
+        x_ref = 0.0;
       }
-      if(fabs(y_ref) < arrived_th_xyz){
-	y_old=y_ref;
-	y_ref = 0.0;
+      if(fabs(y_ref) < arrived_th_xyz) {
+        y_old=y_ref;
+        y_ref = 0.0;
       }
-      if(fabs(z_ref) < arrived_th_xyz){
-	z_old=z_ref;
-	z_ref = 0.0;
+      if(fabs(z_ref) < arrived_th_xyz) {
+        z_old=z_ref;
+        z_ref = 0.0;
       }
       if(fabs(yaw_ref) < arrived_th_yaw)
-	yaw_ref = 0.0;
+      	yaw_ref = 0.0;
 
       //It means that we reached the goal
       if(x_ref == 0 && y_ref == 0 && z_ref == 0 && yaw_ref == 0 ){
-	actionResult.arrived = true;
-	actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);
-	navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
+        actionResult.arrived = true;
+        actionResult.finalDist.data = sqrt(z_old*z_old+y_old*y_old+x_old*x_old);
+        navigationServer->setSucceeded(actionResult,"3D Navigation Goal Reached");
       }
     }
   else
     {
       yaw_ref = 0.0;
     }
+
   if(speed_ref_mode){
     // Compute commmanded velocities
     double vx, vy, vz, ry;
@@ -330,10 +355,10 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
       ry = max_ry*yaw_ref;
     if(msg->points.size() == 1)
       {
-	vx = control_factor*vx;
-	vy = control_factor*vy;
-	vz = control_factor*vz;
-	ry = control_factor*ry;
+        vx = control_factor*vx;
+        vy = control_factor*vy;
+        vz = control_factor*vz;
+        ry = control_factor*ry;
       }
     // Command the computed velocities
     sendSpeedReference(vx, vy, vz, ry);
@@ -353,22 +378,22 @@ void input_trajectory_callback(const trajectory_msgs::MultiDOFJointTrajectory::C
 
     speedMarkerPub.publish(speedMarker);
     speedMarkerPub.publish(rotMarker);
-  }else{
+  } else {
     sendRelPoseYaw(x_ref, y_ref, z_ref+(height-landingHeight),yaw_ref);
   }	
 }
 
 // Takeoff 
 // Perform a monitored takeoff 
-bool monitoredTakeoff(void)
+bool monitoredTakeoff()
 {  
   ros::Time start_time = ros::Time::now();
   ros::Duration(0.01).sleep();
 
   // Step 1.1: Spin the motor
   while (flight_status != DJISDK::FlightStatus::STATUS_ON_GROUND &&
-	 display_mode != DJISDK::DisplayMode::MODE_ENGINE_START &&
-	 ros::Time::now() - start_time < ros::Duration(5)) 
+	       display_mode != DJISDK::DisplayMode::MODE_ENGINE_START &&
+         ros::Time::now() - start_time < ros::Duration(5)) 
     {
       ros::Duration(0.01).sleep();
       ros::spinOnce();
@@ -428,6 +453,8 @@ bool monitoredTakeoff(void)
 	
   return true;
 }
+
+
 void navigateGoalCallback(){
   if(droneLanded){
     ROS_ERROR("Not possible to navigate, take off first");
@@ -532,6 +559,20 @@ void takeOffGoalCallback(){
     }  
   ROS_INFO("\tdone!");
 
+  // New: For GPS Navigation --> activate drone
+  dji_sdk::Activation activation;
+  drone_activation_service.call(activation);
+  if (!activation.response.result) {
+    std::string error_msg {"could not activate drone"};
+    ROS_ERROR("Error: %s ", error_msg.c_str());
+    // takeOffResult.success=false;
+    // takeOffResult.extra_info=error_msg;
+    // takeOffServer->setAborted(takeOffResult);
+    // return;
+  } else {
+    ROS_INFO("Drone activated");
+  }
+
   // Get control authority
   ROS_INFO("Getting control authority ...");
   dji_sdk::SDKControlAuthority authority;
@@ -550,8 +591,8 @@ void takeOffGoalCallback(){
 	
   ROS_INFO("\tdone!");
 
-  // Perform automatic take-off
-  ROS_INFO("Taking-off ...");
+  // Perform automatic takeoff
+  ROS_INFO("Takingoff ...");
   dji_sdk::DroneTaskControl droneTaskControl;
 	
   droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_TAKEOFF;
@@ -589,23 +630,62 @@ void takeOffGoalCallback(){
     }  
   sendSpeedReference(0.0, 0.0, 0.0, 0.0);
   ros::spinOnce();
-  ROS_INFO("\tdone!");
+  ROS_INFO("\tTakeoff success!");
   takeOffResult.success=true;
   takeOffResult.extra_info="TakeOff Done";
 	
-
-  /*sendRelPoseReference(0.0, 0.0, takeOffGoal->takeoff_height.data, 0.0);
-    ros::spinOnce();
-    while(fabs((height-landingHeight)-takeOffGoal->takeoff_height.data) < 0.3)
-    {
-    ros::spinOnce();
-    ros::Duration(0.01).sleep();
-    } 
-  */
   takeOffServer->setSucceeded(takeOffResult);
   droneLanded = false;
   }
 
+
+/********** New GPS navigation tool **************/
+void GPSNavigationGoalCallback(){
+  if(droneLanded){
+    ROS_WARN("Not possible to navigate, please takeoff first");
+
+  }
+
+  
+  gpsNavigationGoal = gpsNavigationServer->acceptNewGoal();
+
+
+  auto waypoint_task = getPlanFromKML(gpsNavigationGoal->filename.data);
+
+  if(waypoint_task.mission_waypoint.size() > 0) {
+    ROS_INFO("Uploading plan. Wp size: %d", (int) waypoint_task.mission_waypoint.size());
+
+    dji_sdk::MissionWpUpload missionWpUpload;
+    missionWpUpload.request.waypoint_task = waypoint_task;
+    waypoint_upload_service.call(missionWpUpload);
+    if (!missionWpUpload.response.result) {
+      ROS_WARN("Could not load waypoints. ack.info: set = %i id = %i", missionWpUpload.response.cmd_set,
+              missionWpUpload.response.cmd_id);
+      ROS_WARN("ack.data: %i", missionWpUpload.response.ack_data);
+    } else {
+      ROS_INFO("Executing mission");
+      dji_sdk::MissionWpAction missionWpAction;
+      missionWpAction.request.action = DJI::OSDK::MISSION_ACTION::START;
+      waypoint_action_service.call(missionWpAction);
+      if (!missionWpAction.response.result)
+      {
+        ROS_WARN("ack.info: set = %i id = %i", missionWpAction.response.cmd_set,
+                 missionWpAction.response.cmd_id);
+        ROS_WARN("ack.data: %i", missionWpAction.response.ack_data);
+      } else {
+
+        ROS_INFO("Mission service call successful!");
+      }
+      // missionAction(,
+        // )
+      
+    }
+
+  }
+}
+
+
+/********* Main program (define interfaces and spin) **********/
 int main (int argc, char** argv)
 {
   ros::init (argc, argv, "matrice_traj_tracker_node");
@@ -634,6 +714,14 @@ int main (int argc, char** argv)
   drone_task_service = nh.serviceClient<dji_sdk::DroneTaskControl>
     ("/dji_sdk/drone_task_control");
 
+  /* New services: For GPS WP Navigation: Wp Upload and Wp Mission*/
+  // ROS stuff
+  drone_activation_service = nh.serviceClient<dji_sdk::Activation>("/dji_sdk/activation");
+  waypoint_upload_service = nh.serviceClient<dji_sdk::MissionWpUpload>(
+    "/dji_sdk/mission_waypoint_upload");
+  waypoint_action_service = nh.serviceClient<dji_sdk::MissionWpAction>(
+    "/dji_sdk/mission_waypoint_action");
+
   //Start action server to communicate with local planner
   navigationServer.reset(new NavigationServer(nh,"/Navigation3D",false));
   navigationServer->registerGoalCallback(boost::function<void()>(navigateGoalCallback));
@@ -650,6 +738,11 @@ int main (int argc, char** argv)
   landingServer->registerGoalCallback(boost::function<void()>(landingGoalCallback));
   landingServer->start();
 
+  //Start action server to receive GPS navigation commands
+  gpsNavigationServer.reset(new GPSNavigationServer(nh,"/GPSNavigation",false));
+  gpsNavigationServer->registerGoalCallback(boost::function<void()>(GPSNavigationGoalCallback));
+  gpsNavigationServer->start();
+
   // Read node parameters
   double takeoffHeight;
   double watchdogFreq;
@@ -658,9 +751,8 @@ int main (int argc, char** argv)
   nh.param("global_frame_id", global_frame_id_, (std::string)"world");
   
   nh.param("drone_model", drone_type, (std::string)"m600");
-  if(!nh.getParam("gazebo_sim", gazebo_sim)){
-    gazebo_sim=false;
-  }
+  nh.param("gazebo_sim", gazebo_sim, false);
+
   fModeActive = gazebo_sim; // If gazebo sim --> we consider the FMode to be active 
 
   if(!nh.getParam("drone_frame", droneFrame)){
