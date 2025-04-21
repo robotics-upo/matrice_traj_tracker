@@ -73,6 +73,9 @@
   <depend>mav_msgs</depend>
 
   <exec_depend>message_runtime</exec_depend>
+
+  <build_depend>libgeographic-dev</build_depend>
+  <exec_depend>libgeographic-dev</exec_depend>
   <!-- The export tag contains other, unspecified, tags -->
   <export>
     <!-- Other tools can request additional information be placed here -->

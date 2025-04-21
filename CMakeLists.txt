@@ -20,6 +20,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 find_package(DJIOSDK REQUIRED)
 
+
 SET(KML_LIBRARIES kmlbase kmldom kmlengine kmlconvenience)
 
 ## System dependencies are found with CMake's conventions
@@ -161,6 +162,7 @@ target_link_libraries(matrice_traj_tracker_node
   ${catkin_LIBRARIES}
   ${DJIOSDK_LIBRARIES}
   ${KML_LIBRARIES}
+  Geographic
 )
 target_link_libraries(fake_traj_publisher_node
   ${catkin_LIBRARIES}
