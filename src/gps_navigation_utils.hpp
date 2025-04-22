@@ -138,7 +138,7 @@ dji_sdk::MissionWaypointTask getPlanFromKML(const std::string &filename) {
 
     cout << endl;
   }
-  cout << "Distancies between waypoints:" << endl;
+  cout << "Distances between waypoints:" << endl;
   for(int j = 1; j < ret.mission_waypoint.size(); ++j) {
       const auto& w1 = ret.mission_waypoint[j - 1];
       const auto& w2 = ret.mission_waypoint[j];
@@ -149,7 +149,7 @@ dji_sdk::MissionWaypointTask getPlanFromKML(const std::string &filename) {
   }
   cout << endl;
 
-  cout << "Distancies from WP home:" << endl;
+  cout << "Distances from WP home:" << endl;
   const auto& wphome = ret.mission_waypoint[0];
   for(int j = 1; j < ret.mission_waypoint.size(); ++j) {
       const auto& w = ret.mission_waypoint[j];
