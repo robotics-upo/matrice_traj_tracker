@@ -5,7 +5,7 @@
         <param name="takeoff_height" type="double" value="3.0"/>
         <param name="max_vx" type="double" value="0.5"/>
         <param name="max_vy" type="double" value="0.5"/>
-        <param name="max_vz" type="double" value="0.4"/>
+        <param name="max_vz" type="double" value="1.0"/>
         <param name="max_ry" type="double" value="0.5"/>
         <param name="min_vx" type="double" value="0.2"/>
         <param name="min_vy" type="double" value="0.2"/>

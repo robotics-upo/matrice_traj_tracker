@@ -138,27 +138,29 @@ dji_sdk::MissionWaypointTask getPlanFromKML(const std::string &filename) {
 
     cout << endl;
   }
-  cout << "Distances between waypoints:" << endl;
-  for(int j = 1; j < ret.mission_waypoint.size(); ++j) {
-      const auto& w1 = ret.mission_waypoint[j - 1];
-      const auto& w2 = ret.mission_waypoint[j];
-      const GeographicLib::Geodesic& geod = GeographicLib::Geodesic::WGS84();
-      double distance;
-      geod.Inverse(w1.latitude, w1.longitude, w2.latitude, w2.longitude, distance);
-      cout << "Distance from WP" << j - 1 << " to WP" << j << ": " << distance << " m" << endl;
-  }
-  cout << endl;
 
-  cout << "Distances from WP home:" << endl;
-  const auto& wphome = ret.mission_waypoint[0];
-  for(int j = 1; j < ret.mission_waypoint.size(); ++j) {
-      const auto& w = ret.mission_waypoint[j];
-      const GeographicLib::Geodesic& geod = GeographicLib::Geodesic::WGS84();
-      double distance;
-      geod.Inverse(wphome.latitude, wphome.longitude, w.latitude, w.longitude, distance);
-      cout << "Distance from WP" << j << " to home: " << distance << " m" << endl;
+  if(!ret.mission_waypoint.empty()){
+    cout << "Distances between waypoints:" << endl;
+    for(int j = 1; j < ret.mission_waypoint.size(); ++j) {
+        const auto& w1 = ret.mission_waypoint[j - 1];
+        const auto& w2 = ret.mission_waypoint[j];
+        const GeographicLib::Geodesic& geod = GeographicLib::Geodesic::WGS84();
+        double distance;
+        geod.Inverse(w1.latitude, w1.longitude, w2.latitude, w2.longitude, distance);
+        cout << "Distance from WP" << j - 1 << " to WP" << j << ": " << distance << " m" << endl;
+    }
+    cout << endl;
+
+    cout << "Distances from WP home:" << endl;
+    const auto& wphome = ret.mission_waypoint[0];
+    for(int j = 1; j < ret.mission_waypoint.size(); ++j) {
+        const auto& w = ret.mission_waypoint[j];
+        const GeographicLib::Geodesic& geod = GeographicLib::Geodesic::WGS84();
+        double distance;
+        geod.Inverse(wphome.latitude, wphome.longitude, w.latitude, w.longitude, distance);
+        cout << "Distance from WP" << j << " to home: " << distance << " m" << endl;
+    }
+    cout << endl;
   }
-  cout << endl;
-  
   return ret;
 }

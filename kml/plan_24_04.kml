@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<name>plan_24_04.kml</name>
+	<StyleMap id="m_ylw-pushpin">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#s_ylw-pushpin</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#s_ylw-pushpin_hl</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="s_ylw-pushpin">
+		<IconStyle>
+			<scale>1.1</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+	</Style>
+	<Style id="s_ylw-pushpin_hl">
+		<IconStyle>
+			<scale>1.3</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+	</Style>
+	<Folder>
+		<name>Plan_cerca</name>
+		<open>1</open>
+		<Placemark>
+			<name>WP0</name>
+			<LookAt>
+				<longitude>-4.085580943545603</longitude>
+				<latitude>39.79233805584903</latitude>
+				<altitude>0</altitude>
+				<heading>0.0004814705166970129</heading>
+				<tilt>35.76732551866912</tilt>
+				<range>853.1166827598895</range>
+				<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+			</LookAt>
+			<styleUrl>#m_ylw-pushpin</styleUrl>
+			<Point>
+				<altitudeMode>relativeToGround</altitudeMode>
+				<gx:drawOrder>1</gx:drawOrder>
+				<coordinates>-4.081418521619315,39.79405736771217,20</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>WP1</name>
+			<LookAt>
+				<longitude>-4.081188912807314</longitude>
+				<latitude>39.79449667991859</latitude>
+				<altitude>0</altitude>
+				<heading>0.001214688403243527</heading>
+				<tilt>32.26088986101773</tilt>
+				<range>704.6380391229915</range>
+				<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+			</LookAt>
+			<styleUrl>#m_ylw-pushpin</styleUrl>
+			<Point>
+				<altitudeMode>relativeToGround</altitudeMode>
+				<gx:drawOrder>1</gx:drawOrder>
+				<coordinates>-4.08258765020536,39.79419354462213,20</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>WP2</name>
+			<LookAt>
+				<longitude>-4.08432606162049</longitude>
+				<latitude>39.79272660888063</latitude>
+				<altitude>0</altitude>
+				<heading>0.001247033719904632</heading>
+				<tilt>33.47749134790534</tilt>
+				<range>507.4654242839302</range>
+				<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+			</LookAt>
+			<styleUrl>#m_ylw-pushpin</styleUrl>
+			<Point>
+				<altitudeMode>relativeToGround</altitudeMode>
+				<gx:drawOrder>1</gx:drawOrder>
+				<coordinates>-4.081418521619315,39.79405736771217,20</coordinates>
+			</Point>
+		</Placemark>
+		<atom:link rel="app" href="https://www.google.com/earth/about/versions/#earth-pro" title="Google Earth Pro 7.3.6.10201"></atom:link>
+	</Folder>
+</Document>
+</kml>
