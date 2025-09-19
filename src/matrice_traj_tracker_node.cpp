@@ -622,11 +622,11 @@ void takeOffGoalCallback(){
   ROS_INFO("Climbing to takeoff height ...");
   while((height-landingHeight)-takeOffGoal->takeoff_height.data < 0)
     {
+      sendSpeedReference(0.0, 0.0, max_vz, 0.0);
       takeOffFb.percent_achieved.data = (height-landingHeight)-takeOffGoal->takeoff_height.data;
       takeOffServer->publishFeedback(takeOffFb);
-      sendSpeedReference(0.0, 0.0, max_vz, 0.0);
       ros::spinOnce();
-      ros::Duration(0.01).sleep();
+      ros::Duration(0.5).sleep();
     }  
   sendSpeedReference(0.0, 0.0, 0.0, 0.0);
   ros::spinOnce();
