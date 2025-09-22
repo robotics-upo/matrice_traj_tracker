@@ -52,12 +52,12 @@ int main(int argc, char **argv) {
             coords.push_back(coord.asDouble());
         }
         // Create placemark
-        string s("WP");
-        s.append(to_string(cont++));
+        char buf[14];
+        sprintf(buf, "WP%03d", cont++);
         
-        cout << "Parsing element: " << s << endl;
+        cout << "Parsing element: " << buf << endl;
 
-        PlacemarkPtr placemark = createPointPlacemarkAltitude(s, coords[0], coords[1], coords[2], cont-1);
+        PlacemarkPtr placemark = createPointPlacemarkAltitude(string(buf), coords[0], coords[1], coords[2], cont-1);
         folder->add_feature(placemark);
     }
 
