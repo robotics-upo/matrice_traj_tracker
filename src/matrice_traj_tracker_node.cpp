@@ -43,6 +43,7 @@ std::string drone_type;
 uint8_t flight_status = 255;
 uint8_t display_mode  = 255;
 double height = -100000.0, landingHeight = -100000.0;
+double lat = 0.0, lon = 0.0;
 ros::Publisher controlPub, speedMarkerPub, heightAboveTakeoffPub;
 double x_ref, y_ref, z_ref, yaw_ref;
 double control_factor, arrived_th_xyz, arrived_th_yaw;
@@ -250,6 +251,8 @@ void gps_callback(const sensor_msgs::NavSatFix::ConstPtr& msg)
 {
   std_msgs::Float64 height_msg; 
   height = msg->altitude;
+  lat = msg->latitude;
+  lon = msg->longitude;
   if(landingHeight > -1000.0)
     {
       height_msg.data = msg->altitude-landingHeight;
@@ -680,7 +683,23 @@ void GPSNavigationGoalCallback(){
         // )
       
     }
-
+    static int last_wp = -1;
+    ros::Rate rate(10.0);
+    for (int j = 0; j < waypoint_task.mission_waypoint.size(); ++j){
+      const auto& w = waypoint_task.mission_waypoint[j];
+      bool reached = false;
+      while (ros::ok() && !reached){
+        ros::spinOnce();
+      if (std::abs(w.latitude-lat) < 0.00001 && std::abs(w.longitude-lon) < 0.00001){
+        if (j != last_wp) { 
+          ROS_INFO("Reached waypoint %d", j+1);
+          last_wp = j;
+          reached = true;
+        }
+      }
+      rate.sleep();
+      }
+    }
   }
 }
 
