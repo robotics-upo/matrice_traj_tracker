@@ -1,0 +1,188 @@
+<kml>
+  <Folder>
+    <Placemark id="wp_0">
+      <name>WP000</name>
+      <Point>
+        <coordinates>
+          -4.08374675527582,39.7935970065681,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_1">
+      <name>WP001</name>
+      <Point>
+        <coordinates>
+          -4.08412858844734,39.7938105524523,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_2">
+      <name>WP002</name>
+      <Point>
+        <coordinates>
+          -4.08398518111466,39.7938183585656,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_3">
+      <name>WP003</name>
+      <Point>
+        <coordinates>
+          -4.08412643903698,39.793854409111,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_4">
+      <name>WP004</name>
+      <Point>
+        <coordinates>
+          -4.08412428962451,39.7938982657693,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_5">
+      <name>WP005</name>
+      <Point>
+        <coordinates>
+          -4.08384177374557,39.793826164502,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_6">
+      <name>WP006</name>
+      <Point>
+        <coordinates>
+          -4.08369836634005,39.7938339702616,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_7">
+      <name>WP007</name>
+      <Point>
+        <coordinates>
+          -4.08412214020996,39.7939421224274,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_8">
+      <name>WP008</name>
+      <Point>
+        <coordinates>
+          -4.08411999079329,39.7939859790851,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_9">
+      <name>WP009</name>
+      <Point>
+        <coordinates>
+          -4.08355495889809,39.7938417758444,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_10">
+      <name>WP010</name>
+      <Point>
+        <coordinates>
+          -4.08341155141969,39.7938495812503,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_11">
+      <name>WP011</name>
+      <Point>
+        <coordinates>
+          -4.08411784137454,39.7940298357424,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_12">
+      <name>WP012</name>
+      <Point>
+        <coordinates>
+          -4.08406546924486,39.794060875085,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_13">
+      <name>WP013</name>
+      <Point>
+        <coordinates>
+          -4.08331983546296,39.7938705790936,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_14">
+      <name>WP014</name>
+      <Point>
+        <coordinates>
+          -4.08333621028368,39.793919163582,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_15">
+      <name>WP015</name>
+      <Point>
+        <coordinates>
+          -4.08393271744451,39.7940714006719,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_16">
+      <name>WP016</name>
+      <Point>
+        <coordinates>
+          -4.08379996560028,39.7940819261074,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_17">
+      <name>WP017</name>
+      <Point>
+        <coordinates>
+          -4.08335258512817,39.7939677480675,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_18">
+      <name>WP018</name>
+      <Point>
+        <coordinates>
+          -4.08336895999645,39.7940163325499,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_19">
+      <name>WP019</name>
+      <Point>
+        <coordinates>
+          -4.08366721371218,39.7940924513915,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_20">
+      <name>WP020</name>
+      <Point>
+        <coordinates>
+          -4.08353446178016,39.7941029765243,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_21">
+      <name>WP021</name>
+      <Point>
+        <coordinates>
+          -4.08338533488847,39.7940649170293,10
+        </coordinates>
+      </Point>
+    </Placemark>
+    <Placemark id="wp_22">
+      <name>WP022</name>
+      <Point>
+        <coordinates>
+          -4.08374675527582,39.7935970065681,10
+        </coordinates>
+      </Point>
+    </Placemark>
+  </Folder>
+</kml>
