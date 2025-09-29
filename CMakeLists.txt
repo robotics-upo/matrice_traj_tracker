@@ -145,6 +145,8 @@ include_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(matrice_traj_tracker_node src/matrice_traj_tracker_node.cpp)
 add_executable(fake_traj_publisher_node src/fake_traj_publisher_node.cpp)
+add_executable(json_to_kml src/json_to_kml.cpp)
+
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -156,6 +158,8 @@ add_executable(fake_traj_publisher_node src/fake_traj_publisher_node.cpp)
 ## same as for the library above
 add_dependencies(matrice_traj_tracker_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(fake_traj_publisher_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(json_to_kml ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(matrice_traj_tracker_node
@@ -167,6 +171,13 @@ target_link_libraries(matrice_traj_tracker_node
 target_link_libraries(fake_traj_publisher_node
   ${catkin_LIBRARIES}
   ${DJIOSDK_LIBRARIES}
+)
+target_link_libraries(json_to_kml
+  ${catkin_LIBRARIES}
+  ${DJIOSDK_LIBRARIES}
+  ${KML_LIBRARIES}
+  Geographic
+  jsoncpp
 )
 #############
 ## Install ##
