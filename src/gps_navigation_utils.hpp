@@ -8,12 +8,10 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <cmath>
 #include "kml/dom.h"
 #include "kml/engine.h"
 #include "kml/base/file.h"
 #include <GeographicLib/Geodesic.hpp>
-#include <sensor_msgs/NavSatFix.h>
 
 using kmldom::ContainerPtr;
 using kmldom::ElementPtr;

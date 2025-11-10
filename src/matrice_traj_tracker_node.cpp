@@ -683,26 +683,33 @@ void GPSNavigationGoalCallback(){
         // )
       
     }
+
     static int last_wp = -1;
+    double lat_to_m = 111000.0; // Rough approximation valid for small areas
+    double lon_to_m = 111000.0*std::cos(lat*M_PI/180.0); 
     ros::Rate rate(10.0);
+    ros::Time print_tracking = ros::Time::now();
     for (int j = 0; j < waypoint_task.mission_waypoint.size(); ++j){
       const auto& w = waypoint_task.mission_waypoint[j];
       bool reached = false;
       while (ros::ok() && !reached){
         ros::spinOnce();
-      if (std::abs(w.latitude-lat) < 0.00001 && std::abs(w.longitude-lon) < 0.00001){
-        if (j != last_wp) { 
-          ROS_INFO("Reached waypoint %d", j+1);
-          last_wp = j;
-          reached = true;
+        double delta_lat = (w.latitude-lat)*lat_to_m;
+        double delta_lon = (w.longitude-lon)*lon_to_m;
+        double dist_to_target = std::sqrt(delta_lat*delta_lat+delta_lon*delta_lon);
+
+        if (dist_to_target < 0.5){ // 0.5 meter threshold 
+          if (j != last_wp) { 
+            ROS_INFO("Reached waypoint %d", j);
+            last_wp = j;
+            reached = true;
+          }
         }
-      }
-      rate.sleep();
+        rate.sleep();
       }
     }
   }
 }
-
 
 /********* Main program (define interfaces and spin) **********/
 int main (int argc, char** argv)
