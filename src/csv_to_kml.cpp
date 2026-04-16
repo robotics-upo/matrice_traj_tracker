@@ -36,10 +36,13 @@ int main(int argc, char **argv) {
     // Create a <Folder> and a ContainerSaver to write to it.
     FolderPtr folder = kmldom::KmlFactory::GetFactory()->CreateFolder();
 
+    // Skip CSV header line
+    string header;
+    getline(plan_file, header);
 
-    float lat,lon,alt;
+    double lat,lon,alt;
     for  (string line; getline(plan_file, line);) {
-        sscanf(line.c_str(), "%f,%f,%f", &lat,&lon,&alt);
+        sscanf(line.c_str(), "%lf,%lf,%lf", &lat,&lon,&alt);
 
         // Create placemark
         char buf[14];

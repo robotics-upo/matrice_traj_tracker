@@ -708,6 +708,7 @@ void GPSNavigationGoalCallback(){
         rate.sleep();
       }
     }
+    ROS_INFO("Mission Completed");
   }
 }
 
