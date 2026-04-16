@@ -553,6 +553,7 @@ void takeOffGoalCallback(){
   ROS_INFO("\tdone!");
 
   // Check the drone is in F-Mode before starting
+  // Tarea si queremos hacer takeoff con el plan a partir de aquí tendríamos que externalizarlo como función
   ROS_INFO("Checking drone is in F-Mode ...");
 
   while(!fModeActive)
@@ -653,7 +654,11 @@ void GPSNavigationGoalCallback(){
   gpsNavigationGoal = gpsNavigationServer->acceptNewGoal();
 
 
+  // Tarea: dependiendo de la extension usar getPlanFromCSV, etc.
+  // Ademas poner orden en el git (json, kml --> flight_plans/kml-csv pon ejemplos de csv)
   auto waypoint_task = getPlanFromKML(gpsNavigationGoal->filename.data);
+
+  // Tarea 3: si el primer waypoint era takeoff --> activamos flag. Si el flag está actico hacemos takeoff
 
   if(waypoint_task.mission_waypoint.size() > 0) {
     ROS_INFO("Uploading plan. Wp size: %d", (int) waypoint_task.mission_waypoint.size());
