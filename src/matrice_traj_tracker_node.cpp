@@ -457,7 +457,6 @@ bool monitoredTakeoff()
   return true;
 }
 
-
 void navigateGoalCallback(){
   if(droneLanded){
     ROS_ERROR("Not possible to navigate, take off first");
@@ -642,68 +641,174 @@ void takeOffGoalCallback(){
   droneLanded = false;
   }
 
-
-/********** New GPS navigation tool **************/
-void GPSNavigationGoalCallback(){
-  if(droneLanded){
-    ROS_WARN("Not possible to navigate, please takeoff first");
-
+/* ------ NEW ------*/
+// Helper function for automatic landing
+bool executeLanding() {
+  if(!fModeActive){
+    ROS_ERROR("Error: Drone is not in F-Mode, aborting automatic landing");
+    return false;
   }
 
+  ROS_INFO("Executing automatic landing...");
+  dji_sdk::DroneTaskControl droneTaskControl;
+  droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_LAND;
+  drone_task_service.call(droneTaskControl);
+
+  if(!droneTaskControl.response.result) {
+    ROS_ERROR("Error: Drone task control bad response while landing");
+    return false;
+  }
   
+  droneLanded = true;
+  ROS_INFO("Automatic landing completed.");
+  return true;
+}
+
+// Helper function for automatic takeoff
+bool executeTakeoff(double target_height) {
+  ROS_INFO("Checking if drone is in F-Mode before takeoff...");
+  while(ros::ok() && !fModeActive) {
+    ros::Duration(0.01).sleep();
+    ros::spinOnce();
+  }  
+  ROS_INFO("F-Mode confirmed.");
+
+  ROS_INFO("Executing automatic takeoff to %.2f meters...", target_height);
+  landingHeight = height; 
+
+  // Activate drone
+  dji_sdk::Activation activation;
+  drone_activation_service.call(activation);
+  if (!activation.response.result) {
+    ROS_ERROR("Error: Could not activate the drone");
+    return false;
+  }
+
+  // Request control authority
+  ROS_INFO("Getting control authority...");
+  dji_sdk::SDKControlAuthority authority;
+  authority.request.control_enable = 1;
+  ctrl_authority_service.call(authority);
+  if(!authority.response.result) {
+    ROS_ERROR("Error: Impossible to obtain drone control!");
+    return false;
+  }
+
+  // Command Takeoff
+  ROS_INFO("Taking off...");
+  dji_sdk::DroneTaskControl droneTaskControl;
+  droneTaskControl.request.task = dji_sdk::DroneTaskControl::Request::TASK_TAKEOFF;
+  drone_task_service.call(droneTaskControl);
+  
+  if(!droneTaskControl.response.result || !monitoredTakeoff()) {
+    ROS_ERROR("Error in monitored takeoff sequence");
+    return false;
+  }
+
+  // Climb to the target height
+  ROS_INFO("Climbing to takeoff height...");
+  while((height - landingHeight) - target_height < 0) {
+    sendSpeedReference(0.0, 0.0, max_vz, 0.0);
+    ros::spinOnce();
+    ros::Duration(0.5).sleep();
+  }  
+  
+  sendSpeedReference(0.0, 0.0, 0.0, 0.0);
+  droneLanded = false;
+  ROS_INFO("Takeoff successful.");
+  return true;
+}
+
+/********** New GPS navigation tool **************/
+void GPSNavigationGoalCallback() {
+  if(droneLanded){
+    ROS_WARN("Drone is currently landed. Checking if mission contains takeoff command...");
+  }
+
   gpsNavigationGoal = gpsNavigationServer->acceptNewGoal();
 
+  std::string filename = gpsNavigationGoal->filename.data;
+  
+  dji_sdk::MissionWaypointTask waypoint_task;
+  bool do_takeoff = false;
+  bool do_land = false;
 
-  // Tarea: dependiendo de la extension usar getPlanFromCSV, etc.
-  // Ademas poner orden en el git (json, kml --> flight_plans/kml-csv pon ejemplos de csv)
-  auto waypoint_task = getPlanFromKML(gpsNavigationGoal->filename.data);
-
-  // Tarea 3: si el primer waypoint era takeoff --> activamos flag. Si el flag está actico hacemos takeoff
+  // 1. Check file extension and use the correct parser
+  if (filename.find(".kml") != std::string::npos) {
+    waypoint_task = getPlanFromKML(filename);
+  } else if (filename.find(".json") != std::string::npos) {
+    waypoint_task = getPlanFromJson(filename); 
+  } else if (filename.find(".csv") != std::string::npos) {
+    // Pass booleans by reference so the parser can set them to 'true' if TAKEOFF/LAND is found
+    waypoint_task = getPlanFromCSV(filename, do_takeoff, do_land); 
+  } else {
+    ROS_ERROR("Unrecognized file extension: %s", filename.c_str());
+    gpsNavigationServer->setAborted();
+    return;
+  }
 
   if(waypoint_task.mission_waypoint.size() > 0) {
     ROS_INFO("Uploading plan. Wp size: %d", (int) waypoint_task.mission_waypoint.size());
 
+    // 2. If the first point is takeoff -> execute takeoff
+    if (do_takeoff) {
+      if (droneLanded) {
+        // Take off up to the altitude of the first waypoint in the file
+        double first_wp_alt = waypoint_task.mission_waypoint[0].altitude;
+        if(!executeTakeoff(first_wp_alt)) {
+          ROS_ERROR("Aborting GPS Navigation due to takeoff failure.");
+          gpsNavigationServer->setAborted();
+          return;
+        }
+      } else {
+        ROS_INFO("Plan requests Takeoff, but drone is already in the air. Skipping.");
+      }
+    } else if (droneLanded) {
+       ROS_WARN("Not possible to navigate. Please takeoff first or add TAKEOFF to the mission file.");
+       gpsNavigationServer->setAborted();
+       return;
+    }
+
+    // Upload mission to DJI SDK
     dji_sdk::MissionWpUpload missionWpUpload;
     missionWpUpload.request.waypoint_task = waypoint_task;
     waypoint_upload_service.call(missionWpUpload);
+    
     if (!missionWpUpload.response.result) {
-      ROS_WARN("Could not load waypoints. ack.info: set = %i id = %i", missionWpUpload.response.cmd_set,
-              missionWpUpload.response.cmd_id);
-      ROS_WARN("ack.data: %i", missionWpUpload.response.ack_data);
+      ROS_WARN("Could not load waypoints. ack.info: set = %i id = %i", missionWpUpload.response.cmd_set, missionWpUpload.response.cmd_id);
+      gpsNavigationServer->setAborted();
+      return;
     } else {
       ROS_INFO("Executing mission");
       dji_sdk::MissionWpAction missionWpAction;
       missionWpAction.request.action = DJI::OSDK::MISSION_ACTION::START;
       waypoint_action_service.call(missionWpAction);
-      if (!missionWpAction.response.result)
-      {
-        ROS_WARN("ack.info: set = %i id = %i", missionWpAction.response.cmd_set,
-                 missionWpAction.response.cmd_id);
-        ROS_WARN("ack.data: %i", missionWpAction.response.ack_data);
+      
+      if (!missionWpAction.response.result) {
+        ROS_WARN("ack.info: set = %i id = %i", missionWpAction.response.cmd_set, missionWpAction.response.cmd_id);
+        gpsNavigationServer->setAborted();
+        return; 
       } else {
-
         ROS_INFO("Mission service call successful!");
       }
-      // missionAction(,
-        // )
-      
     }
 
+    // Track trajectory
     static int last_wp = -1;
-    double lat_to_m = 111000.0; // Rough approximation valid for small areas
-    double lon_to_m = 111000.0*std::cos(lat*M_PI/180.0); 
+    double lat_to_m = 111000.0; 
+    double lon_to_m = 111000.0 * std::cos(lat * M_PI / 180.0); 
     ros::Rate rate(10.0);
-    ros::Time print_tracking = ros::Time::now();
-    for (int j = 0; j < waypoint_task.mission_waypoint.size(); ++j){
+    
+    for (int j = 0; j < waypoint_task.mission_waypoint.size(); ++j) {
       const auto& w = waypoint_task.mission_waypoint[j];
       bool reached = false;
-      while (ros::ok() && !reached){
+      while (ros::ok() && !reached) {
         ros::spinOnce();
-        double delta_lat = (w.latitude-lat)*lat_to_m;
-        double delta_lon = (w.longitude-lon)*lon_to_m;
-        double dist_to_target = std::sqrt(delta_lat*delta_lat+delta_lon*delta_lon);
+        double delta_lat = (w.latitude - lat) * lat_to_m;
+        double delta_lon = (w.longitude - lon) * lon_to_m;
+        double dist_to_target = std::sqrt(delta_lat * delta_lat + delta_lon * delta_lon);
 
-        if (dist_to_target < 0.5){ // 0.5 meter threshold 
+        if (dist_to_target < 0.5) { 
           if (j != last_wp) { 
             ROS_INFO("Reached waypoint %d", j);
             last_wp = j;
@@ -714,7 +819,12 @@ void GPSNavigationGoalCallback(){
       }
     }
 
-    // Tarea 2: si el ultimo waypoint era land --> comandar un land despues de la trayectoria
+    // 3. If the last waypoint was land -> command a landing
+    if (do_land) {
+      executeLanding();
+    }
+
+    gpsNavigationServer->setSucceeded();
   }
 }
 

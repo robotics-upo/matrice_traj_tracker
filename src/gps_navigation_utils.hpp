@@ -12,6 +12,8 @@
 #include "kml/engine.h"
 #include "kml/base/file.h"
 #include <GeographicLib/Geodesic.hpp>
+#include <fstream>
+#include <jsoncpp/json/json.h>
 
 using kmldom::ContainerPtr;
 using kmldom::ElementPtr;
@@ -93,7 +95,7 @@ struct ComparePlacemarks
   }
 };
 
-void setWaypointInitDefaults(dji_sdk::MissionWaypointTask& waypointTask)
+inline void setWaypointInitDefaults(dji_sdk::MissionWaypointTask& waypointTask)
 {
   waypointTask.velocity_range     = 10;
   waypointTask.idle_velocity      = 5;
@@ -105,7 +107,7 @@ void setWaypointInitDefaults(dji_sdk::MissionWaypointTask& waypointTask)
   waypointTask.gimbal_pitch_mode  = dji_sdk::MissionWaypointTask::GIMBAL_PITCH_FREE;
 }
 
-dji_sdk::MissionWaypointTask getPlanFromKML(const std::string &filename) {
+inline dji_sdk::MissionWaypointTask getPlanFromKML(const std::string &filename) {
   placemark_vector_t placemark_vector;
 
   dji_sdk::MissionWaypointTask ret;
@@ -161,6 +163,71 @@ dji_sdk::MissionWaypointTask getPlanFromKML(const std::string &filename) {
         cout << "Distance from WP" << j << " to home: " << distance << " m" << endl;
     }
     cout << endl;
+  }
+  return ret;
+}
+
+inline dji_sdk::MissionWaypointTask getPlanFromJson(const std::string &filename) {
+  dji_sdk::MissionWaypointTask ret;
+  setWaypointInitDefaults(ret);
+
+  std::ifstream plan_file(filename);
+  if (!plan_file.is_open()) {
+    std::cerr << "Error: Could not open JSON file " << filename << std::endl;
+    return ret;
+  }
+
+  Json::Value plan;
+  plan_file >> plan;
+  auto &waypoints = plan["waypoints"];
+
+  for (auto &wp : waypoints) {
+    if(wp.size() >= 3) {
+      dji_sdk::MissionWaypoint w;
+      w.latitude = wp[0].asDouble();
+      w.longitude = wp[1].asDouble();
+      w.altitude = wp[2].asDouble();
+      ret.mission_waypoint.push_back(w);
+      std::cout << "JSON WP -> Lat: " << w.latitude << " Lng: " << w.longitude << " Alt: " << w.altitude << std::endl;
+    }
+  }
+  return ret;
+}
+
+inline dji_sdk::MissionWaypointTask getPlanFromCSV(const std::string &filename, bool &do_takeoff, bool &do_land) {
+  dji_sdk::MissionWaypointTask ret;
+  setWaypointInitDefaults(ret);
+
+  std::ifstream plan_file(filename);
+  if (!plan_file.is_open()) {
+    std::cerr << "Error: Could not open CSV file " << filename << std::endl;
+    return ret;
+  }
+
+  std::string line;
+  while (std::getline(plan_file, line)) {
+    // Check for special commands
+    if (line.find("TAKEOFF") != std::string::npos) {
+      do_takeoff = true;
+      std::cout << "Command found: TAKEOFF" << std::endl;
+      continue;
+    }
+    if (line.find("LAND") != std::string::npos) {
+      do_land = true;
+      std::cout << "Command found: LAND" << std::endl;
+      continue;
+    }
+
+    // Parse standard coordinates (Lat, Lon, Alt)
+    float lat, lon, alt;
+    if (sscanf(line.c_str(), "%f,%f,%f", &lat, &lon, &alt) == 3) {
+      dji_sdk::MissionWaypoint w;
+      w.latitude = lat;
+      w.longitude = lon;
+      w.altitude = alt;
+      ret.mission_waypoint.push_back(w);
+      std::cout << "CSV WP -> Lat: " << w.latitude << " Lng: " << w.longitude << " Alt: " << w.altitude << std::endl;
+    }
   }
   return ret;
 }

@@ -168,6 +168,7 @@ target_link_libraries(matrice_traj_tracker_node
   ${DJIOSDK_LIBRARIES}
   ${KML_LIBRARIES}
   Geographic
+  jsoncpp
 )
 target_link_libraries(fake_traj_publisher_node
   ${catkin_LIBRARIES}

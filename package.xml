@@ -76,6 +76,10 @@
 
   <build_depend>libgeographic-dev</build_depend>
   <exec_depend>libgeographic-dev</exec_depend>
+
+  <build_depend>libjsoncpp-dev</build_depend>
+  <exec_depend>libjsoncpp-dev</exec_depend>
+  
   <!-- The export tag contains other, unspecified, tags -->
   <export>
     <!-- Other tools can request additional information be placed here -->
