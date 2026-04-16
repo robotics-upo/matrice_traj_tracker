@@ -219,12 +219,21 @@ inline dji_sdk::MissionWaypointTask getPlanFromCSV(const std::string &filename, 
     }
 
     // Parse standard coordinates (Lat, Lon, Alt)
-    float lat, lon, alt;
-    if (sscanf(line.c_str(), "%f,%f,%f", &lat, &lon, &alt) == 3) {
+    std::stringstream ss(line);
+
+    string substr;
+    getline(ss, substr, ',');
+
+    if (substr == "WAYPOINT") {
       dji_sdk::MissionWaypoint w;
-      w.latitude = lat;
-      w.longitude = lon;
-      w.altitude = alt;
+
+      getline(ss, substr, ',');
+      w.latitude = std::stof(substr);
+      getline(ss, substr, ',');
+      w.longitude = std::stof(substr);
+      getline(ss, substr, ',');
+      w.altitude = std::stof(substr);  
+
       ret.mission_waypoint.push_back(w);
       std::cout << "CSV WP -> Lat: " << w.latitude << " Lng: " << w.longitude << " Alt: " << w.altitude << std::endl;
     }

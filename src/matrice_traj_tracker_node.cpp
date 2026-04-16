@@ -748,11 +748,13 @@ void GPSNavigationGoalCallback() {
   }
 
   if(waypoint_task.mission_waypoint.size() > 0) {
-    ROS_INFO("Uploading plan. Wp size: %d", (int) waypoint_task.mission_waypoint.size());
+    
 
     // 2. If the first point is takeoff -> execute takeoff
     if (do_takeoff) {
+
       if (droneLanded) {
+        ROS_INFO("Executing takeoff before navigation.");
         // Take off up to the altitude of the first waypoint in the file
         double first_wp_alt = waypoint_task.mission_waypoint[0].altitude;
         if(!executeTakeoff(first_wp_alt)) {
@@ -769,6 +771,8 @@ void GPSNavigationGoalCallback() {
        return;
     }
 
+    ROS_INFO("Uploading plan. Wp size: %d", (int) waypoint_task.mission_waypoint.size());
+
     // Upload mission to DJI SDK
     dji_sdk::MissionWpUpload missionWpUpload;
     missionWpUpload.request.waypoint_task = waypoint_task;
@@ -779,13 +783,13 @@ void GPSNavigationGoalCallback() {
       gpsNavigationServer->setAborted();
       return;
     } else {
-      ROS_INFO("Executing mission");
+      ROS_INFO("Mission uploaded. Executing mission");
       dji_sdk::MissionWpAction missionWpAction;
       missionWpAction.request.action = DJI::OSDK::MISSION_ACTION::START;
       waypoint_action_service.call(missionWpAction);
       
       if (!missionWpAction.response.result) {
-        ROS_WARN("ack.info: set = %i id = %i", missionWpAction.response.cmd_set, missionWpAction.response.cmd_id);
+        ROS_WARN("Could not execute Wp Action. ack.info: set = %i id = %i", missionWpAction.response.cmd_set, missionWpAction.response.cmd_id);
         gpsNavigationServer->setAborted();
         return; 
       } else {
@@ -825,6 +829,9 @@ void GPSNavigationGoalCallback() {
     }
 
     gpsNavigationServer->setSucceeded();
+  } else {
+    ROS_ERROR("No waypoints found in the file.");
+    gpsNavigationServer->setAborted();
   }
 }
 
