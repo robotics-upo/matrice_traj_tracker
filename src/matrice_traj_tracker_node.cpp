@@ -641,7 +641,6 @@ void takeOffGoalCallback(){
   droneLanded = false;
   }
 
-/* ------ NEW ------*/
 // Helper function for automatic landing
 bool executeLanding() {
   if(!fModeActive){
@@ -719,7 +718,7 @@ bool executeTakeoff(double target_height) {
   return true;
 }
 
-/********** New GPS navigation tool **************/
+/********** GPS navigation tool **************/
 void GPSNavigationGoalCallback() {
   if(droneLanded){
     ROS_WARN("Drone is currently landed. Checking if mission contains takeoff command...");

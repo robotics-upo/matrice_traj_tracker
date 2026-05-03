@@ -3,7 +3,6 @@
 #include <dji_sdk/MissionWpAction.h>
 #include <dji_sdk/MissionWpUpload.h>
 
-/******** KML Stuff (from the examples of kml library) **********/
 #include <algorithm>
 #include <iostream>
 #include <string>
@@ -13,6 +12,7 @@
 #include "kml/base/file.h"
 #include <GeographicLib/Geodesic.hpp>
 #include <fstream>
+#include <sstream>
 #include <jsoncpp/json/json.h>
 
 using kmldom::ContainerPtr;
@@ -206,36 +206,43 @@ inline dji_sdk::MissionWaypointTask getPlanFromCSV(const std::string &filename, 
 
   std::string line;
   while (std::getline(plan_file, line)) {
-    // Check for special commands
-    if (line.find("TAKEOFF") != std::string::npos) {
-      do_takeoff = true;
-      std::cout << "Command found: TAKEOFF" << std::endl;
-      continue;
-    }
-    if (line.find("LAND") != std::string::npos) {
-      do_land = true;
-      std::cout << "Command found: LAND" << std::endl;
-      continue;
-    }
-
-    // Parse standard coordinates (Lat, Lon, Alt)
     std::stringstream ss(line);
+    std::string action_type;
+    
+    // Read the first column (Action type)
+    getline(ss, action_type, ',');
 
-    string substr;
-    getline(ss, substr, ',');
+    // Set flags based on the action type
+    if (action_type == "TAKEOFF") {
+      do_takeoff = true;
+      std::cout << "Command found: TAKEOFF (Parsing coords as initial waypoint)" << std::endl;
+    } else if (action_type == "LAND") {
+      do_land = true;
+      std::cout << "Command found: LAND (Parsing coords as final waypoint)" << std::endl;
+    }
 
-    if (substr == "WAYPOINT") {
+    // Process coordinates
+    if (action_type == "WAYPOINT" || action_type == "TAKEOFF" || action_type == "LAND") {
       dji_sdk::MissionWaypoint w;
+      std::string substr;
 
       getline(ss, substr, ',');
       w.latitude = std::stof(substr);
+
       getline(ss, substr, ',');
       w.longitude = std::stof(substr);
+
       getline(ss, substr, ',');
-      w.altitude = std::stof(substr);  
+      w.altitude = std::stof(substr);
+
+      // Default waypoint values
+      w.damping_distance = 1.0; 
+      w.target_yaw = 0;
+      w.target_gimbal_pitch = 0;
+      w.turn_mode = 0;
+      w.has_action = 0;
 
       ret.mission_waypoint.push_back(w);
-      std::cout << "CSV WP -> Lat: " << w.latitude << " Lng: " << w.longitude << " Alt: " << w.altitude << std::endl;
     }
   }
   return ret;
